@@ -1,0 +1,62 @@
+# Day 02 — OSI Model, TCP/IP & Packet Analysis
+
+## 📚 Topics Learned
+
+* OSI 7-layer model
+* TCP/IP model
+* OSI vs TCP/IP
+* IP addresses — Layer 3
+* MAC addresses — Layer 2
+* TCP vs UDP
+* Encapsulation and decapsulation
+* Packets vs frames
+* TCP three-way handshake
+* Basic Wireshark packet analysis
+
+## 🧠 OSI Model
+
+| Layer | Name         | Examples                |
+| ----- | ------------ | ----------------------- |
+| 7     | Application  | HTTP, DNS, FTP          |
+| 6     | Presentation | Encryption, compression |
+| 5     | Session      | Session management      |
+| 4     | Transport    | TCP, UDP                |
+| 3     | Network      | IP, ICMP                |
+| 2     | Data Link    | Ethernet, MAC           |
+| 1     | Physical     | Cables, signals         |
+
+## 🔬 Practical Work
+
+### 1. Ping Packet Analysis
+
+Captured ICMP traffic using Wireshark.
+
+Observed:
+
+* ICMP Echo Request
+* ICMP Echo Reply
+* Source IP
+* Destination IP
+
+### 2. TCP Three-Way Handshake
+
+Observed the TCP connection process:
+
+```text
+Client → SYN → Server
+Client ← SYN-ACK ← Server
+Client → ACK → Server
+```
+
+### 🛡️ Cybersecurity Learning
+
+Understanding network layers helps a SOC analyst investigate:
+
+* Suspicious IP addresses
+* Unusual TCP connections
+* ICMP traffic
+* Network reconnaissance
+* Packet captures
+* Potential network attacks
+
+
