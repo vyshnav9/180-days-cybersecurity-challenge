@@ -1,0 +1,247 @@
+# Day 02 — TCP/IP Protocols, Ports & Network Services
+
+## 🎯 Objective
+
+Understand common network protocols, port numbers, client/server communication, listening ports, sockets, and why attackers perform port scanning.
+
+---
+
+## 📚 Topics Learned
+
+### 1. TCP/IP Protocol Suite
+
+TCP/IP is a collection of protocols used for communication between devices over networks.
+
+Main layers:
+
+* Application Layer — HTTP, HTTPS, DNS, SSH, SMTP
+* Transport Layer — TCP, UDP
+* Internet Layer — IP, ICMP
+* Network Access Layer — Ethernet, Wi-Fi, ARP
+
+---
+
+### 2. Common Network Protocols
+
+| Protocol | Purpose                         |     Common Port |
+| -------- | ------------------------------- | --------------: |
+| HTTP     | Web communication               |          TCP 80 |
+| HTTPS    | Secure web communication        |         TCP 443 |
+| DNS      | Domain name resolution          |      UDP/TCP 53 |
+| DHCP     | Automatic network configuration |       UDP 67/68 |
+| ARP      | IPv4-to-MAC resolution on LAN   | No TCP/UDP port |
+| ICMP     | Network diagnostics/control     | No TCP/UDP port |
+| FTP      | File transfer                   |          TCP 21 |
+| SFTP     | Secure file transfer over SSH   |          TCP 22 |
+| SSH      | Secure remote access            |          TCP 22 |
+| SMTP     | Sending/relaying email          |          TCP 25 |
+| POP3     | Email retrieval                 |         TCP 110 |
+| IMAP     | Email access/synchronization    |         TCP 143 |
+
+---
+
+## 🔢 3. Port Numbers
+
+A port identifies a service/application endpoint on a host.
+
+Example:
+
+`192.168.1.50:443`
+
+* IP address: `192.168.1.50`
+* Port: `443`
+* Protocol/service: HTTPS
+
+Well-known ports range from **0–1023**.
+
+Important ports learned:
+
+* 21 → FTP
+* 22 → SSH/SFTP
+* 25 → SMTP
+* 53 → DNS
+* 67/68 → DHCP
+* 80 → HTTP
+* 110 → POP3
+* 143 → IMAP
+* 443 → HTTPS
+
+---
+
+## 🔄 4. TCP vs UDP
+
+### TCP
+
+* Connection-oriented
+* Reliable
+* Uses acknowledgments
+* Maintains ordered delivery
+
+Examples:
+
+* HTTPS
+* SSH
+* FTP
+
+### UDP
+
+* Connectionless
+* Lower overhead
+* Does not guarantee delivery or ordering
+
+Examples:
+
+* DNS
+* DHCP
+
+---
+
+## 💻 5. Client Port vs Server Port
+
+The client usually uses a temporary/ephemeral port.
+
+The server normally listens on a known service port.
+
+Example:
+
+`192.168.1.50:51524 → Server:443`
+
+* `51524` → Client port
+* `443` → Server port
+
+---
+
+## 👂 6. Listening Ports
+
+A listening port means a service is waiting for incoming connections.
+
+Windows command used:
+
+```text
+netstat -ano | findstr LISTENING
+```
+
+Linux command:
+
+```text
+ss -tulnp
+```
+
+A listening port is not automatically malicious, but an unexpected service should be investigated.
+
+---
+
+## 🔌 7. Socket Basics
+
+A socket can be understood as a network communication endpoint.
+
+Example:
+
+`192.168.1.50:51524/TCP`
+
+It identifies:
+
+* IP address
+* Port
+* Transport protocol
+
+---
+
+## 🕵️ 8. Why Attackers Scan Ports
+
+Attackers may scan ports to discover:
+
+* Open ports
+* Running services
+* Potential vulnerabilities
+* Misconfigured services
+* Possible attack surfaces
+
+Example:
+
+```text
+22   → SSH
+80   → HTTP
+443  → HTTPS
+3306 → MySQL
+```
+
+Port scanning can therefore be an early stage of network reconnaissance.
+
+---
+
+## 🧪 Practical Lab 1 — Listening Ports
+
+Command used:
+
+```text
+netstat -ano | findstr LISTENING
+```
+
+### Observation
+
+I checked the ports currently listening on my system and observed the associated local ports/process IDs.
+
+Screenshot:
+
+`![Netstat Listening Ports](screenshots/netstat.png)`
+
+---
+
+## 🦈 Practical Lab 2 — Wireshark
+
+### Display filter
+
+```text
+dns
+```
+
+I captured DNS traffic using Wireshark and observed network packets generated while accessing a website.
+
+I investigated:
+
+* Source IP
+* Destination IP
+* DNS query
+* Protocol
+* Port
+
+
+---
+
+## 🛡️ SOC Analyst Connection
+
+Understanding protocols and ports helps a SOC analyst investigate suspicious network activity.
+
+For example:
+
+```text
+192.168.1.50:51524 → Remote_Server:443
+```
+
+This indicates that a client using an ephemeral port is communicating with a service on TCP port 443.
+
+An analyst can investigate:
+
+* Which process generated the connection?
+* Is the destination legitimate?
+* Is the connection expected?
+* Is there unusual traffic volume?
+* Are there other suspicious connections?
+
+---
+
+## 🧠 Key Takeaways
+
+* IP addresses identify hosts/interfaces.
+* Ports identify service endpoints.
+* TCP provides reliable, connection-oriented communication.
+* UDP is connectionless and lightweight.
+* Listening ports indicate services waiting for connections.
+* ICMP does not use TCP/UDP port numbers.
+* SFTP uses SSH and normally operates on TCP 22.
+* Port scanning can be used for network reconnaissance.
+* Wireshark can be used to analyze network traffic.
+
+---
+
