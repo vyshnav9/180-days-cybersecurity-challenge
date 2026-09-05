@@ -64,6 +64,13 @@ This helped me understand how IP addresses are associated with MAC addresses on 
 ## 🧠 What I Learned
 
 Today I learned how a computer obtains an IP address, communicates with other devices, and uses DNS and the default gateway to communicate beyond the local network.
+## Practical Work
+
+### Screenshot
+
+![Practical Screenshot](screenshots/Screenshot 2026-09-01 082209.png)
+
+![Practical Screenshot](screenshots/screenshot2.png)
 
 ## 🔐 Cybersecurity Connection
 
