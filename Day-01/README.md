@@ -68,7 +68,7 @@ Today I learned how a computer obtains an IP address, communicates with other de
 
 ### Screenshot
 
-![Practical Screenshot](screenshots/Screenshot 2026-09-01 082209.png)
+![Practical Screenshot](screenshots/screenshot1.png)
 
 ![Practical Screenshot](screenshots/screenshot2.png)
 
