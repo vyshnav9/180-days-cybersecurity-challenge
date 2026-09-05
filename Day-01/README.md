@@ -68,9 +68,9 @@ Today I learned how a computer obtains an IP address, communicates with other de
 
 ### Screenshot
 
-![Practical Screenshot](screenshots/Screenshot1.png)
+![Practical Screenshot](screenshots/Screenshot1)
 
-![Practical Screenshot](screenshots/Screenshot2.png)
+![Practical Screenshot](screenshots/Screenshot2)
 
 ## 🔐 Cybersecurity Connection
 
