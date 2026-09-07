@@ -1,0 +1,314 @@
+# Day 06 — TCP, UDP & Network Ports
+
+## 🎯 Objective
+
+Understand how TCP and UDP work at the transport layer and learn how network ports identify services and applications.
+
+---
+
+## 📚 Topics Learned
+
+* Transport Layer
+* TCP
+* UDP
+* TCP three-way handshake
+* TCP flags
+* TCP sequence numbers
+* TCP acknowledgements
+* Retransmission
+* UDP datagrams
+* Source and destination ports
+* Common network ports
+* Listening ports
+* Established connections
+
+---
+
+# 🔵 1. TCP — Transmission Control Protocol
+
+TCP is a connection-oriented transport protocol.
+
+It provides mechanisms for:
+
+* Reliable delivery
+* Ordered data transfer
+* Acknowledgements
+* Retransmission
+* Flow control
+
+### TCP Three-Way Handshake
+
+A TCP connection begins with:
+
+```text
+Client                    Server
+
+  SYN  -------------------->
+       <---------------- SYN + ACK
+  ACK  -------------------->
+```
+
+After this process, the TCP connection can exchange application data.
+
+---
+
+# 🟢 2. UDP — User Datagram Protocol
+
+UDP is a connectionless transport protocol.
+
+It has less protocol overhead than TCP and does not provide TCP-style reliability, ordering, or retransmission.
+
+Common uses include:
+
+* DNS
+* DHCP
+* VoIP
+* Streaming
+* Online gaming
+
+---
+
+# 🔍 TCP vs UDP
+
+| TCP                          | UDP                           |
+| ---------------------------- | ----------------------------- |
+| Connection-oriented          | Connectionless                |
+| Reliable delivery mechanisms | No TCP-style reliability      |
+| Ordered byte stream          | Datagram-based                |
+| More overhead                | Lower overhead                |
+| Uses acknowledgements        | No TCP-style acknowledgements |
+| Example: HTTPS               | Example: DNS                  |
+
+---
+
+# 🔢 3. Network Ports
+
+A port helps identify a transport-layer service endpoint.
+
+Example:
+
+```text
+192.168.1.10:443
+```
+
+Here:
+
+```text
+192.168.1.10 → IP address
+443           → Port
+```
+
+---
+
+## ⭐ Common Ports
+
+|  Port | Protocol / Service |
+| ----: | ------------------ |
+| 20/21 | FTP                |
+|    22 | SSH                |
+|    23 | Telnet             |
+|    25 | SMTP               |
+|    53 | DNS                |
+| 67/68 | DHCP               |
+|    80 | HTTP               |
+|   110 | POP3               |
+|   143 | IMAP               |
+|   443 | HTTPS              |
+|  3389 | RDP                |
+
+---
+
+# 💻 Practical Exercise 1 — Check Network Connections
+
+On Windows, I used:
+
+```cmd
+netstat -ano
+```
+
+This command can display:
+
+* Local addresses
+* Local ports
+* Remote addresses
+* Remote ports
+* Connection state
+* Process ID (PID)
+
+Example:
+
+```text
+TCP    192.168.1.10:51524    142.250.x.x:443    ESTABLISHED
+```
+
+This can be interpreted as a TCP connection from a local ephemeral port to a remote HTTPS service.
+
+---
+
+# 💻 Practical Exercise 2 — Find Listening Ports
+
+I used:
+
+```cmd
+netstat -ano | findstr LISTENING
+```
+
+This helped me identify services that are listening for incoming TCP connections.
+
+### Linux
+
+Equivalent commands include:
+
+```bash
+ss -tuln
+```
+
+or:
+
+```bash
+ss -tulpn
+```
+
+---
+
+# 💻 Practical Exercise 3 — Test Connectivity
+
+I tested connectivity using:
+
+```cmd
+ping google.com
+```
+
+I also used:
+
+```cmd
+nslookup google.com
+```
+
+This helped me connect the concepts of:
+
+```text
+DNS → IP address → Network communication
+```
+
+---
+
+# 🔐 Cybersecurity Relevance
+
+TCP, UDP, and ports are extremely important in SOC analysis.
+
+A security analyst may investigate:
+
+```text
+Source IP
+    ↓
+Destination IP
+    ↓
+Protocol
+    ↓
+Source Port
+    ↓
+Destination Port
+    ↓
+Connection State
+```
+
+Example:
+
+```text
+192.168.1.50:49152
+        ↓
+203.0.113.10:443
+```
+
+An analyst can investigate:
+
+* Which device initiated the connection?
+* What service was contacted?
+* Was the destination legitimate?
+* Was the connection expected?
+* How frequently did the connection occur?
+* Was unusual traffic sent over the connection?
+
+---
+
+# 🧪 Mini SOC Investigation
+
+Suppose a network log contains:
+
+```text
+192.168.1.50 → 198.51.100.25:4444
+Protocol: TCP
+```
+
+I would investigate:
+
+1. Which device owns `192.168.1.50`?
+2. Which process created the connection?
+3. What is the destination IP?
+4. Why is port `4444` being used?
+5. Is the connection expected?
+6. How frequently is the connection occurring?
+7. What data was exchanged?
+
+**Important:** A port number alone does not prove malicious activity. Context and additional evidence are required.
+
+---
+
+# 🧠 Key Takeaways
+
+1. TCP is connection-oriented.
+2. TCP uses a three-way handshake to establish a connection.
+3. TCP uses sequence numbers and acknowledgements for reliable delivery mechanisms.
+4. UDP is connectionless and lightweight.
+5. Ports help identify transport-layer service endpoints.
+6. `443` is commonly associated with HTTPS.
+7. `53` is commonly associated with DNS.
+8. `22` is commonly associated with SSH.
+9. `netstat` and `ss` can help investigate network connections.
+10. Understanding ports and protocols is essential for SOC investigations.
+
+---
+
+# 📸 Practical Evidence
+
+Screenshots included:
+
+* `netstat` output
+* Listening ports
+* Network connectivity test
+* DNS lookup
+
+Sensitive information was removed before publishing screenshots publicly.
+
+---
+
+# 🚀 Progress
+
+**Day 06 / 180 completed ✅**
+
+### Skills Practiced
+
+`TCP` `UDP` `Ports` `Netstat` `Networking` `DNS` `SOC Fundamentals`
+
+---
+
+## 📈 Next Step
+
+**Day 7 — OSI Model + TCP/IP Model + Encapsulation**
+
+The next stage will connect:
+
+```text
+Application
+     ↓
+Transport
+     ↓
+Network
+     ↓
+Data Link
+     ↓
+Physical
+```
+
+and show how a SOC analyst interprets packets and network traffic.
