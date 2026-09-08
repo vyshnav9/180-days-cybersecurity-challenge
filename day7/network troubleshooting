@@ -1,0 +1,395 @@
+# 🛡️ Day 7 — Network Troubleshooting + Essential Commands
+
+## 🎯 Objective
+
+Learn the essential networking commands used to troubleshoot connectivity, DNS, routing, ports, and network configuration problems.
+
+These commands are important for **SOC Analysts, Cybersecurity Analysts, Network Engineers, and System Administrators**.
+
+---
+
+## 📚 Topics Covered
+
+### 1. `ping`
+
+Used to test whether a host is reachable and measure network latency.
+
+```bash
+ping 8.8.8.8
+```
+
+Example:
+
+```text
+Reply from 8.8.8.8: bytes=32 time=20ms TTL=117
+```
+
+### What I learned
+
+* Tests basic network connectivity
+* Measures round-trip time
+* Uses ICMP Echo Request and Echo Reply
+* Helps identify connectivity problems
+
+---
+
+## 2. `ipconfig`
+
+Windows command used to view and troubleshoot network configuration.
+
+```cmd
+ipconfig
+```
+
+More detailed information:
+
+```cmd
+ipconfig /all
+```
+
+Useful information includes:
+
+* IPv4 address
+* IPv6 address
+* Subnet mask
+* Default gateway
+* DNS servers
+* MAC address
+* DHCP information
+
+---
+
+## 3. `tracert`
+
+Used to identify the path packets take from my computer to a destination.
+
+```cmd
+tracert google.com
+```
+
+It helps identify:
+
+* Network hops
+* Routing problems
+* Possible latency points
+* Where connectivity fails
+
+---
+
+## 4. `nslookup`
+
+Used to troubleshoot DNS resolution.
+
+```cmd
+nslookup google.com
+```
+
+Example:
+
+```text
+Name:    google.com
+Address: xxx.xxx.xxx.xxx
+```
+
+I can also query specific DNS record types:
+
+```cmd
+nslookup -type=A google.com
+nslookup -type=AAAA google.com
+nslookup -type=MX google.com
+```
+
+---
+
+## 5. `netstat`
+
+Used to view network connections, listening ports, and network statistics.
+
+```cmd
+netstat -ano
+```
+
+To find listening ports:
+
+```cmd
+netstat -ano | findstr LISTENING
+```
+
+Important information:
+
+* Local address
+* Remote address
+* Connection state
+* PID (Process ID)
+
+Example:
+
+```text
+TCP    0.0.0.0:443    0.0.0.0:0    LISTENING
+```
+
+### SOC relevance
+
+`netstat` can help identify:
+
+* Unexpected connections
+* Suspicious remote IP addresses
+* Unknown listening ports
+* Potentially unwanted services
+
+---
+
+# 🔧 Network Troubleshooting Method
+
+When a computer has no Internet connection, I can troubleshoot step-by-step:
+
+```text
+Check physical/Wi-Fi connection
+          ↓
+Check IP configuration
+          ↓
+Ping localhost
+          ↓
+Ping default gateway
+          ↓
+Ping external IP
+          ↓
+Test DNS resolution
+          ↓
+Trace network route
+          ↓
+Check ports/connections
+```
+
+### Example
+
+#### Step 1 — Check IP configuration
+
+```cmd
+ipconfig /all
+```
+
+Check:
+
+* IP address
+* Subnet mask
+* Default gateway
+* DNS server
+
+#### Step 2 — Test local TCP/IP stack
+
+```cmd
+ping 127.0.0.1
+```
+
+#### Step 3 — Test default gateway
+
+```cmd
+ping <gateway-ip>
+```
+
+#### Step 4 — Test Internet connectivity
+
+```cmd
+ping 8.8.8.8
+```
+
+#### Step 5 — Test DNS
+
+```cmd
+nslookup google.com
+```
+
+#### Step 6 — Trace the route
+
+```cmd
+tracert google.com
+```
+
+#### Step 7 — Check connections
+
+```cmd
+netstat -ano
+```
+
+---
+
+# 🧪 Practical Lab
+
+## Lab 1 — Check IP Configuration
+
+Command:
+
+```cmd
+ipconfig /all
+```
+
+### Observed
+
+* IPv4 Address: __________________
+* Subnet Mask: __________________
+* Default Gateway: ______________
+* DNS Server: ___________________
+* MAC Address: __________________
+
+---
+
+## Lab 2 — Test Connectivity
+
+Command:
+
+```cmd
+ping 8.8.8.8
+```
+
+### Result
+
+* Packets Sent: ______
+* Packets Received: ______
+* Packet Loss: ______
+* Average Latency: ______ ms
+
+---
+
+## Lab 3 — DNS Troubleshooting
+
+Command:
+
+```cmd
+nslookup google.com
+```
+
+### Observed
+
+* DNS Server: __________________
+* Resolved IP: _________________
+
+---
+
+## Lab 4 — Trace the Route
+
+Command:
+
+```cmd
+tracert google.com
+```
+
+### Observed
+
+* Number of hops: ______________
+* Any timeout: Yes / No
+* Highest latency observed: ______ ms
+
+---
+
+## Lab 5 — Check Network Connections
+
+Command:
+
+```cmd
+netstat -ano
+```
+
+### Investigate
+
+* Listening ports
+* Established connections
+* Remote IP addresses
+* Process IDs
+
+---
+
+# 🔐 SOC Analyst Connection
+
+Network troubleshooting commands are also useful during security investigations.
+
+For example:
+
+```text
+Suspicious IP detected
+        ↓
+Identify local system
+        ↓
+ipconfig
+        ↓
+Check active connections
+        ↓
+netstat
+        ↓
+Identify remote IP
+        ↓
+DNS investigation
+        ↓
+nslookup
+        ↓
+Trace route
+        ↓
+tracert
+        ↓
+Investigate suspicious activity
+```
+
+A SOC analyst can combine command-line information with **Wireshark, SIEM, firewall logs, EDR, and threat intelligence** to investigate an incident.
+
+---
+
+# 📝 Interview Questions
+
+### 1. What does `ping` do?
+
+It tests network reachability and measures round-trip latency using ICMP.
+
+### 2. What does `ipconfig` show?
+
+It displays network configuration such as IP address, subnet mask, gateway, and DNS information.
+
+### 3. What does `tracert` do?
+
+It shows the network hops between the local system and a destination.
+
+### 4. What does `nslookup` do?
+
+It queries DNS servers to resolve domain names and inspect DNS records.
+
+### 5. What does `netstat` show?
+
+It displays network connections, listening ports, and related network statistics.
+
+### 6. How would you troubleshoot a computer with no Internet connectivity?
+
+I would check the network connection, verify IP configuration, test the local TCP/IP stack, ping the gateway, test an external IP, test DNS resolution, trace the route, and inspect active connections.
+
+---
+
+# 💡 Key Takeaways
+
+* Learned essential network troubleshooting commands
+* Learned how to diagnose connectivity problems systematically
+* Practiced `ping`
+* Practiced `ipconfig`
+* Practiced `tracert`
+* Practiced `nslookup`
+* Practiced `netstat`
+* Connected troubleshooting skills with SOC investigations
+* Improved practical networking knowledge
+
+---
+
+## ✅ Day 7 Completion Checklist
+
+* [x] Learned `ping`
+* [x] Learned `ipconfig`
+* [x] Learned `tracert`
+* [x] Learned `nslookup`
+* [x] Learned `netstat`
+* [x] Practiced network troubleshooting
+* [x] Connected commands with SOC analysis
+* [x] Documented my learning on GitHub
+
+---
+
+## 🚀 Day 7 Status
+
+**Completed ✅**
+
+**Next:** Day 8 — Linux Fundamentals for Cybersecurity
