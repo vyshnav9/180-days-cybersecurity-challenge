@@ -1,0 +1,600 @@
+# 🐧 Day 8 — Linux Fundamentals
+
+## 🎯 Objective
+
+Learn the basic Linux concepts and commands required for cybersecurity, SOC analysis, system administration, and security labs.
+
+---
+
+# 📚 1. What is Linux?
+
+**Linux** is an open-source operating system kernel. Linux-based operating systems are widely used in:
+
+* Servers
+* Cloud infrastructure
+* Cybersecurity
+* Networking
+* Containers
+* Embedded systems
+
+Linux is especially important in cybersecurity because many security tools, servers, and security appliances run on Linux.
+
+---
+
+# 🐧 2. Linux Distributions
+
+A **Linux distribution (distro)** combines the Linux kernel with system utilities, package managers, libraries, and applications.
+
+Common distributions include:
+
+### Ubuntu
+
+* Beginner-friendly
+* Widely used on desktops and servers
+* Good for learning Linux fundamentals
+
+### Debian
+
+* Stable and widely used
+* Parent distribution for many other Linux distributions
+
+### Kali Linux
+
+* Designed specifically for penetration testing and security testing
+* Includes many cybersecurity tools
+
+Examples:
+
+```text
+Debian
+   ├── Ubuntu
+   └── Other Debian-based distributions
+
+Kali Linux
+   └── Debian-based
+```
+
+---
+
+# 📂 3. Linux Filesystem
+
+Linux uses a hierarchical filesystem starting from:
+
+```text
+/
+```
+
+This is called the **root directory**.
+
+Important directories:
+
+| Directory | Purpose                           |
+| --------- | --------------------------------- |
+| `/`       | Root of the filesystem            |
+| `/home`   | Users' personal directories       |
+| `/root`   | Root user's home directory        |
+| `/etc`    | System configuration files        |
+| `/var`    | Variable data and logs            |
+| `/tmp`    | Temporary files                   |
+| `/usr`    | Applications and system resources |
+| `/bin`    | Essential user commands           |
+| `/sbin`   | Essential system commands         |
+| `/dev`    | Device files                      |
+| `/proc`   | Process/kernel information        |
+
+Example:
+
+```text
+/
+├── home
+│   └── student
+├── etc
+├── var
+├── tmp
+├── usr
+├── dev
+└── proc
+```
+
+---
+
+# 👑 4. Root User
+
+The **root user** is the administrator account in Linux.
+
+Root has extensive privileges and can:
+
+* Modify system files
+* Install software
+* Create/delete users
+* Change permissions
+* Start/stop services
+* Modify system configuration
+
+Example:
+
+```bash
+sudo command
+```
+
+`sudo` allows an authorized normal user to execute a command with elevated privileges.
+
+### Security principle
+
+Use the **least privilege** necessary.
+
+Avoid using root privileges when they are not required.
+
+---
+
+# 👤 5. Normal User
+
+A normal user has limited permissions.
+
+For example:
+
+```bash
+whoami
+```
+
+shows the currently logged-in user.
+
+Check user information:
+
+```bash
+id
+```
+
+Example:
+
+```text
+uid=1000(student) gid=1000(student)
+```
+
+Normal users generally cannot modify protected system files without appropriate privileges.
+
+---
+
+# 🔐 6. File Permissions
+
+Linux uses permissions to control who can:
+
+* **Read (****`r`****)**
+* **Write (****`w`****)**
+* **Execute (****`x`****)**
+
+Example:
+
+```text
+-rwxr-xr--
+```
+
+The permissions are divided into:
+
+```text
+Owner     Group     Others
+rwx       r-x       r--
+```
+
+Meaning:
+
+* Owner → read, write, execute
+* Group → read, execute
+* Others → read only
+
+### Check permissions
+
+```bash
+ls -l
+```
+
+Example:
+
+```text
+-rw-r--r--  student  student  notes.txt
+```
+
+### Numeric permissions
+
+| Permission | Value |
+| ---------- | ----: |
+| Read       |     4 |
+| Write      |     2 |
+| Execute    |     1 |
+
+Therefore:
+
+```text
+rwx = 4 + 2 + 1 = 7
+rw- = 4 + 2 = 6
+r-- = 4
+```
+
+Example:
+
+```bash
+chmod 755 script.sh
+```
+
+means:
+
+```text
+Owner  → 7 → rwx
+Group  → 5 → r-x
+Others → 5 → r-x
+```
+
+---
+
+# ⚙️ 7. Processes
+
+A **process** is a running instance of a program.
+
+Linux assigns every process a **PID (Process ID)**.
+
+View processes:
+
+```bash
+ps
+```
+
+More detailed:
+
+```bash
+ps aux
+```
+
+Interactive process monitoring:
+
+```bash
+top
+```
+
+Find a process:
+
+```bash
+ps aux | grep ssh
+```
+
+### SOC relevance
+
+Processes are extremely important during incident investigation.
+
+A SOC analyst may investigate:
+
+```text
+Suspicious connection
+       ↓
+Identify destination IP
+       ↓
+Identify local process
+       ↓
+Check process path
+       ↓
+Check parent process
+       ↓
+Investigate executable
+```
+
+---
+
+# 🔧 8. Services
+
+A **service** is a background program that provides functionality to the system or other applications.
+
+Examples:
+
+* SSH
+* Web server
+* DNS service
+* Database service
+
+On systems using `systemd`, common commands include:
+
+```bash
+systemctl status ssh
+```
+
+Check running services:
+
+```bash
+systemctl --type=service
+```
+
+Start a service:
+
+```bash
+sudo systemctl start <service>
+```
+
+Stop a service:
+
+```bash
+sudo systemctl stop <service>
+```
+
+---
+
+# 🌎 9. Environment Variables
+
+Environment variables store information that programs can use.
+
+View all environment variables:
+
+```bash
+env
+```
+
+View a specific variable:
+
+```bash
+echo $PATH
+```
+
+Example:
+
+```text
+/usr/local/bin:/usr/bin:/bin
+```
+
+### Important variables
+
+| Variable | Purpose                                      |
+| -------- | -------------------------------------------- |
+| `PATH`   | Directories searched for executable commands |
+| `HOME`   | User's home directory                        |
+| `USER`   | Current username                             |
+| `SHELL`  | Current shell                                |
+| `PWD`    | Current working directory                    |
+
+Example:
+
+```bash
+echo $USER
+echo $HOME
+echo $SHELL
+echo $PWD
+```
+
+---
+
+# 🧪 Practical Lab
+
+## Lab 1 — Identify Current User
+
+```bash
+whoami
+```
+
+```bash
+id
+```
+
+Record:
+
+```text
+Username: __________
+UID: ______________
+Groups: ___________
+```
+
+---
+
+## Lab 2 — Explore Filesystem
+
+```bash
+pwd
+```
+
+```bash
+ls
+```
+
+```bash
+ls -la
+```
+
+Explore:
+
+```bash
+cd /
+ls
+```
+
+Then:
+
+```bash
+cd /home
+ls
+```
+
+---
+
+## Lab 3 — File Permissions
+
+Create a file:
+
+```bash
+touch security.txt
+```
+
+Check permissions:
+
+```bash
+ls -l security.txt
+```
+
+Change permissions:
+
+```bash
+chmod 600 security.txt
+```
+
+Check again:
+
+```bash
+ls -l security.txt
+```
+
+Observe how the permissions changed.
+
+---
+
+## Lab 4 — Process Investigation
+
+Run:
+
+```bash
+ps aux
+```
+
+Then:
+
+```bash
+top
+```
+
+Find a process:
+
+```bash
+ps aux | grep ssh
+```
+
+Record one process:
+
+```text
+Process: __________
+PID: ______________
+User: _____________
+```
+
+---
+
+## Lab 5 — Check Services
+
+Run:
+
+```bash
+systemctl --type=service
+```
+
+Check a specific service:
+
+```bash
+systemctl status ssh
+```
+
+If SSH is not installed or the service has a different name on your system, use another available service.
+
+---
+
+## Lab 6 — Environment Variables
+
+Run:
+
+```bash
+echo $PATH
+echo $HOME
+echo $USER
+echo $SHELL
+echo $PWD
+```
+
+Record your observations.
+
+---
+
+# 🔐 SOC Analyst Connection
+
+Linux knowledge is essential for investigating compromised systems.
+
+For example:
+
+```text
+Security Alert
+      ↓
+Identify affected Linux machine
+      ↓
+Check logged-in users
+      ↓
+whoami / id
+      ↓
+Investigate processes
+      ↓
+ps / top
+      ↓
+Check suspicious services
+      ↓
+systemctl
+      ↓
+Check files and permissions
+      ↓
+ls -l
+      ↓
+Investigate environment
+      ↓
+Environment variables
+```
+
+A suspicious process running with **root privileges**, an unexpected service, or an executable with unusual permissions can be important investigation leads.
+
+---
+
+# 📝 Interview Questions
+
+### 1. What is Linux?
+
+Linux is an open-source operating-system kernel used in many operating systems, servers, cloud environments, and security systems.
+
+### 2. What is the difference between Ubuntu and Kali Linux?
+
+Ubuntu is a general-purpose Linux distribution, while Kali Linux is specifically designed for penetration testing and security work.
+
+### 3. What is the Linux root user?
+
+Root is the administrator account with extensive privileges.
+
+### 4. What are Linux file permissions?
+
+They control read, write, and execute access for the owner, group, and other users.
+
+### 5. What is a process?
+
+A process is a running instance of a program and is identified by a PID.
+
+### 6. What is a service?
+
+A service is a background process that provides a particular system or application function.
+
+### 7. What is `sudo`?
+
+`sudo` allows an authorized user to execute commands with elevated privileges.
+
+### 8. What is `$PATH`?
+
+`PATH` is an environment variable containing directories where the shell searches for executable commands.
+
+---
+
+# 💡 Key Takeaways
+
+* Learned Linux fundamentals
+* Learned Linux distributions
+* Understood the Linux filesystem
+* Learned root vs normal users
+* Learned file permissions
+* Learned processes and PIDs
+* Learned Linux services
+* Learned environment variables
+* Practiced basic Linux commands
+* Connected Linux administration with SOC investigations
+
+---
+
+---
+
+## 🚀 Day 8 Status
+
+**Completed ✅**
+
+**Next:** Day 9 — Essential Linux Commands + File and Directory Management
