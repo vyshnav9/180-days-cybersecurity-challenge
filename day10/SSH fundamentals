@@ -1,0 +1,447 @@
+# Day 10 — SSH Fundamentals
+
+## 🎯 Objective
+
+Learn how SSH works, how remote Linux systems are accessed securely, and how SSH authentication protects systems from unauthorized access.
+
+---
+
+## 1. What is SSH?
+
+**SSH (Secure Shell)** is a network protocol used to securely connect to and manage a remote computer.
+
+Example:
+
+```bash
+ssh username@192.168.1.100
+```
+
+This allows a user to remotely access the system at `192.168.1.100`.
+
+SSH can be used for:
+
+* Remote Linux administration
+* Running commands remotely
+* Secure file transfers
+* Server management
+* Security investigations
+
+---
+
+## 2. Why does SSH use encryption?
+
+SSH encrypts the communication between the client and server.
+
+Without encryption, sensitive information traveling across the network could potentially be intercepted.
+
+SSH encryption helps protect:
+
+* Login credentials
+* Commands
+* Data transferred during the session
+* Session information
+
+Example:
+
+```text
+SSH Client  ===== Encrypted Connection =====>  SSH Server
+```
+
+This provides **confidentiality** and helps protect the integrity of the communication.
+
+---
+
+## 3. SSH Client vs SSH Server
+
+### SSH Client
+
+The **SSH client** is the system initiating the connection.
+
+Example:
+
+```bash
+ssh alice@192.168.1.100
+```
+
+Your computer acts as the SSH client.
+
+### SSH Server
+
+The **SSH server** is the remote system accepting SSH connections.
+
+On many Linux systems, the SSH service is provided by **OpenSSH**.
+
+The service is commonly called:
+
+```text
+sshd
+```
+
+---
+
+## 4. Port 22
+
+SSH traditionally uses **TCP port 22**.
+
+Example:
+
+```text
+192.168.1.50:51520
+        |
+        | SSH
+        ↓
+192.168.1.100:22
+```
+
+Here:
+
+* `51520` → temporary client-side source port
+* `22` → SSH server port
+
+Check listening ports on Linux:
+
+```bash
+ss -tuln
+```
+
+To specifically check port 22:
+
+```bash
+ss -tln | grep :22
+```
+
+⚠️ Port 22 being open does **not** automatically mean a system is compromised.
+
+---
+
+## 5. Username
+
+A username identifies the account you want to access on the remote system.
+
+Example:
+
+```bash
+ssh alice@192.168.1.100
+```
+
+Here:
+
+```text
+alice → username
+192.168.1.100 → remote IP address
+```
+
+The SSH server checks whether the specified account exists and whether it is allowed to log in through SSH.
+
+---
+
+## 6. Remote IP Address
+
+The **remote IP address** identifies the system you are trying to connect to.
+
+Example:
+
+```bash
+ssh alice@192.168.1.100
+```
+
+Remote IP:
+
+```text
+192.168.1.100
+```
+
+The general SSH format is:
+
+```bash
+ssh username@remote_ip
+```
+
+Example:
+
+```bash
+ssh student@192.168.1.100
+```
+
+---
+
+## 7. Password Authentication
+
+With password authentication, the SSH server asks the user for the account password.
+
+Example:
+
+```bash
+ssh alice@192.168.1.100
+```
+
+The server verifies the authentication attempt before allowing access.
+
+### Important
+
+Never share:
+
+* SSH passwords
+* Private keys
+* API keys
+* Authentication tokens
+
+in GitHub repositories.
+
+---
+
+## 8. SSH Key Authentication
+
+SSH can also authenticate users using **cryptographic key pairs**.
+
+The user generates:
+
+```text
+Private Key
+Public Key
+```
+
+The public key is placed on the remote server, while the private key remains with the user.
+
+Typical Linux command:
+
+```bash
+ssh-keygen
+```
+
+A key pair can then be used for authentication.
+
+Example:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 alice@192.168.1.100
+```
+
+The exact filename may differ depending on how the key was generated.
+
+---
+
+## 9. Public Key vs Private Key
+
+SSH key authentication uses asymmetric cryptography.
+
+### Public Key
+
+The **public key** can be placed on the server.
+
+Example location:
+
+```text
+~/.ssh/authorized_keys
+```
+
+### Private Key
+
+The **private key must remain secret**.
+
+Example:
+
+```text
+~/.ssh/id_ed25519
+```
+
+Think of it like:
+
+```text
+Public Key  → Can be shared
+Private Key → Must be protected
+```
+
+⚠️ **Never upload your private SSH key to GitHub.**
+
+Also protect your private key with an appropriate passphrase where possible.
+
+---
+
+## 10. Why Password-Based SSH Can Be Targeted
+
+SSH servers exposed to networks such as the Internet can receive repeated login attempts.
+
+Attackers may attempt:
+
+* Password guessing
+* Brute-force attacks
+* Credential stuffing
+* Attempts using leaked usernames/passwords
+
+Example:
+
+```text
+Attacker
+   ↓
+SSH Server :22
+   ↓
+Repeated login attempts
+```
+
+A weak password can make password-based authentication easier to attack.
+
+### Defensive measures
+
+System administrators can reduce the risk by using:
+
+* Strong, unique passwords
+* SSH key authentication
+* MFA where supported
+* Login rate limiting
+* Fail2ban or similar controls
+* Firewall restrictions
+* Disabling unnecessary SSH exposure
+* Restricting which users can log in
+* Keeping OpenSSH and the operating system updated
+* Monitoring SSH authentication logs
+
+---
+
+# 🧪 Practical Lab
+
+If you have a Linux VM, first check whether the SSH client is available:
+
+```bash
+ssh -V
+```
+
+Check whether an SSH server is running:
+
+```bash
+systemctl status ssh
+```
+
+On some distributions the service may be named:
+
+```bash
+systemctl status sshd
+```
+
+Check whether port 22 is listening:
+
+```bash
+ss -tln | grep :22
+```
+
+Generate a test SSH key pair:
+
+```bash
+ssh-keygen -t ed25519
+```
+
+⚠️ Do this only in your own lab environment. Never experiment against systems you do not own or have permission to test.
+
+---
+
+# 🔍 SOC Investigation Scenario
+
+Imagine a Linux server receives many failed SSH login attempts:
+
+```text
+Failed password for invalid user admin
+Failed password for user test
+Failed password for user root
+```
+
+A SOC analyst should investigate:
+
+1. Source IP address
+2. Destination server
+3. Username targeted
+4. Number of failed attempts
+5. Time period
+6. Whether authentication eventually succeeded
+7. Whether the source IP is known or suspicious
+8. What happened after a successful login
+
+This can help identify possible **SSH brute-force or credential-attack activity**.
+
+---
+
+# 💡 Important Commands
+
+| Purpose                  | Command                 |
+| ------------------------ | ----------------------- |
+| Check SSH version        | `ssh -V`                |
+| Connect to server        | `ssh user@IP`           |
+| Generate SSH key         | `ssh-keygen -t ed25519` |
+| Check SSH service        | `systemctl status ssh`  |
+| Check port 22            | `ss -tln \| grep :22`   |
+| View network connections | `ss -tuln`              |
+
+---
+
+# 🎯 Interview Questions
+
+### Q1. What is SSH?
+
+SSH is a secure network protocol used to remotely access and manage systems over an encrypted connection.
+
+### Q2. Which port does SSH normally use?
+
+**TCP port 22.**
+
+### Q3. What is the difference between an SSH client and server?
+
+The client initiates the connection, while the server accepts and handles SSH connections.
+
+### Q4. What is SSH key authentication?
+
+It is an authentication method using a cryptographic public/private key pair instead of relying only on a password.
+
+### Q5. Which key must remain secret?
+
+**The private key.**
+
+### Q6. Where is a user's public SSH key commonly stored on the server?
+
+```text
+~/.ssh/authorized_keys
+```
+
+### Q7. Why can password-based SSH be attacked?
+
+Internet-exposed SSH services can receive repeated password-guessing, brute-force, or credential-stuffing attempts, especially when accounts use weak or reused passwords.
+
+---
+
+# 🔐 Cybersecurity Relevance
+
+Understanding SSH is important for a SOC Analyst because SSH activity appears frequently in security logs.
+
+You should eventually learn to investigate:
+
+```text
+Source IP
+     ↓
+SSH Server
+     ↓
+Username
+     ↓
+Authentication result
+     ↓
+Successful/failed login
+     ↓
+Commands/processes after login
+```
+
+This connects your **Linux fundamentals → networking → SOC monitoring → incident response** learning path.
+
+---
+
+## ✅ Day 9 Completion Checklist
+
+* [ ] Understand SSH
+* [ ] Understand SSH encryption
+* [ ] Understand client vs server
+* [ ] Understand TCP port 22
+* [ ] Understand username and remote IP
+* [ ] Understand password authentication
+* [ ] Understand SSH key authentication
+* [ ] Understand public vs private keys
+* [ ] Understand SSH attack risks
+* [ ] Practice SSH commands in a lab
+* [ ] Document the work on GitHub
+
+**Progress: Day 09 / 180 🚀**
