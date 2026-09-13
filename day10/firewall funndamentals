@@ -1,0 +1,527 @@
+# 🔥 Day 10 — Firewall Fundamentals
+
+## 🎯 Objective
+
+Understand how firewalls control network traffic using rules based on IP addresses, ports, protocols, and traffic direction.
+
+Firewalls are an important security control used to prevent unauthorized network access.
+
+---
+
+# 📚 1. What is a Firewall?
+
+A **firewall** is a security mechanism that monitors and controls network traffic based on predefined rules.
+
+A firewall can decide whether traffic should be:
+
+```text
+ALLOW ✅
+   or
+DENY ❌
+```
+
+Simplified flow:
+
+```text
+Network Traffic
+      ↓
+   Firewall
+      ↓
+ Check Rules
+      ↓
+ ┌────┴────┐
+ ↓         ↓
+ALLOW     DENY
+```
+
+---
+
+# ✅ 2. Allow
+
+An **ALLOW** rule permits traffic that matches the rule.
+
+Example:
+
+```text
+ALLOW TCP
+Source: Any
+Destination: Web Server
+Destination Port: 443
+```
+
+This allows HTTPS traffic to the web server.
+
+---
+
+# ❌ 3. Deny
+
+A **DENY** rule blocks traffic that matches the rule.
+
+Example:
+
+```text
+DENY TCP
+Source: 10.0.0.50
+Destination: 192.168.1.10
+Destination Port: 22
+```
+
+This blocks SSH traffic from the specified source to the destination.
+
+---
+
+# ⬅️ 4. Inbound Traffic
+
+**Inbound traffic** is traffic coming **into** a device or network.
+
+Example:
+
+```text
+Internet
+   ↓
+Firewall
+   ↓
+Internal Server
+```
+
+If an external computer attempts to connect to a server, the traffic is inbound from the server/network's perspective.
+
+Example:
+
+```text
+Internet → Server:443
+```
+
+---
+
+# ➡️ 5. Outbound Traffic
+
+**Outbound traffic** is traffic leaving a device or network.
+
+Example:
+
+```text
+Internal Computer
+       ↓
+    Firewall
+       ↓
+    Internet
+```
+
+Example:
+
+```text
+192.168.1.50 → 8.8.8.8:53
+```
+
+This is outbound traffic from the internal network.
+
+---
+
+# 🌐 6. Source IP
+
+The **source IP** identifies where the network traffic originated.
+
+Example:
+
+```text
+192.168.1.50 → 8.8.8.8
+^^^^^^^^^^^^
+ Source IP
+```
+
+A firewall can use the source IP to allow or block traffic.
+
+Example:
+
+```text
+ALLOW
+Source IP: 192.168.1.50
+```
+
+---
+
+# 🎯 7. Destination IP
+
+The **destination IP** identifies where the traffic is going.
+
+Example:
+
+```text
+192.168.1.50 → 8.8.8.8
+                ^^^^^^^
+              Destination IP
+```
+
+Firewall rules can restrict access to specific destination systems.
+
+---
+
+# 🔢 8. Source Port
+
+The **source port** identifies the port used by the originating application.
+
+Example:
+
+```text
+192.168.1.50:51524 → 142.250.x.x:443
+             ^^^^^
+          Source Port
+```
+
+Client applications commonly use temporary **ephemeral ports** as their source ports.
+
+---
+
+# 🎯 9. Destination Port
+
+The **destination port** identifies the service being accessed.
+
+Example:
+
+```text
+192.168.1.50:51524 → 142.250.x.x:443
+                              ^^^
+                       Destination Port
+```
+
+Common examples:
+
+| Port | Service |
+| ---: | ------- |
+|   22 | SSH     |
+|   25 | SMTP    |
+|   53 | DNS     |
+|   80 | HTTP    |
+|  443 | HTTPS   |
+
+A firewall can allow or deny traffic based on destination port.
+
+---
+
+# 📡 10. Protocol
+
+A firewall can also use the network protocol when evaluating traffic.
+
+Common protocols include:
+
+* TCP
+* UDP
+* ICMP
+
+Example:
+
+```text
+ALLOW TCP → Port 443
+```
+
+This permits TCP traffic to HTTPS.
+
+Another example:
+
+```text
+DENY UDP → Port 53
+```
+
+This could block UDP-based DNS traffic, depending on the network's requirements.
+
+---
+
+# 🧱 11. Firewall Rules
+
+A firewall rule specifies what traffic should be allowed or blocked.
+
+A simplified rule can contain:
+
+```text
+Source IP
+Destination IP
+Source Port
+Destination Port
+Protocol
+Direction
+Action
+```
+
+Example:
+
+```text
+Rule 1
+
+Action: ALLOW
+Direction: INBOUND
+Source IP: ANY
+Destination IP: 192.168.1.10
+Protocol: TCP
+Destination Port: 443
+```
+
+Meaning:
+
+> Allow inbound TCP HTTPS traffic to `192.168.1.10`.
+
+---
+
+# 🔥 Example Firewall Rule Table
+
+| Rule | Direction | Source           | Destination | Protocol | Port | Action |
+| ---- | --------- | ---------------- | ----------- | -------- | ---: | ------ |
+| 1    | Inbound   | Any              | Web Server  | TCP      |  443 | Allow  |
+| 2    | Inbound   | Any              | SSH Server  | TCP      |   22 | Deny   |
+| 3    | Outbound  | Internal Network | DNS Server  | UDP      |   53 | Allow  |
+| 4    | Outbound  | Internal Network | Any         | TCP      |   25 | Deny   |
+
+The exact behavior depends on the firewall platform and rule ordering.
+
+---
+
+# 🧠 Rule Matching
+
+Suppose the firewall receives:
+
+```text
+Source IP     :      192.168.1.50
+Destination IP: 192.168.1.10
+Protocol      :       TCP
+Source Port   :    51524
+Destination   :    443
+Direction     :      Inbound
+```
+
+The firewall compares this traffic against its configured rules.
+
+If a matching rule says:
+
+```text
+ALLOW TCP → Destination Port 443
+```
+
+the traffic can be permitted.
+
+If a matching rule says:
+
+```text
+DENY TCP → Destination Port 443
+```
+
+the traffic can be blocked.
+
+---
+
+# ⚠️ Rule Order
+
+Many firewalls evaluate rules in a particular order.
+
+For example:
+
+```text
+Rule 1 → ALLOW 192.168.1.50 → Port 443
+Rule 2 → DENY ALL → Port 443
+```
+
+Traffic from `192.168.1.50` may be allowed because it matches the earlier rule.
+
+Therefore, **rule order matters** on many firewall platforms.
+
+---
+
+# 🔐 SOC Analyst Connection
+
+Firewall logs are extremely useful during security investigations.
+
+Example alert:
+
+```text
+192.168.1.50 → 203.0.113.50:4444
+TCP
+Outbound
+DENIED
+```
+
+A SOC analyst can investigate:
+
+```text
+Source IP
+    ↓
+Identify Device
+    ↓
+Identify User
+    ↓
+Destination IP
+    ↓
+Destination Port
+    ↓
+Protocol
+    ↓
+Firewall Rule
+    ↓
+Allow/Deny Result
+    ↓
+Investigate Process / Endpoint
+```
+
+Questions an analyst may ask:
+
+* Which device generated the traffic?
+* Which user was using the device?
+* What destination IP was contacted?
+* Which port was targeted?
+* Was the traffic TCP or UDP?
+* Was it inbound or outbound?
+* Which firewall rule matched?
+* Was the connection allowed or blocked?
+* Did the same source contact other suspicious destinations?
+
+---
+
+# 🧪 Practical Lab
+
+## Lab 1 — Windows Firewall
+
+Open Windows Firewall settings and inspect the existing rules.
+
+You can also use PowerShell:
+
+```powershell
+Get-NetFirewallProfile
+```
+
+View firewall rules:
+
+```powershell
+Get-NetFirewallRule
+```
+
+---
+
+## Lab 2 — Check a Specific Rule
+
+```powershell
+Get-NetFirewallRule | Select-Object DisplayName, Enabled, Direction, Action
+```
+
+Observe:
+
+```text
+Display Name
+Enabled
+Direction
+Action
+```
+
+---
+
+## Lab 3 — Network Connection + Firewall Thinking
+
+Use:
+
+```cmd
+netstat -ano
+```
+
+Find an established connection and identify:
+
+```text
+Source IP
+Source Port
+Destination IP
+Destination Port
+Protocol
+State
+PID
+```
+
+Then think about which firewall rule would need to allow or deny that traffic.
+
+---
+
+# 📝 Interview Questions
+
+### 1. What is a firewall?
+
+A firewall monitors and controls network traffic according to security rules.
+
+### 2. What is inbound traffic?
+
+Traffic coming into a device or network.
+
+### 3. What is outbound traffic?
+
+Traffic leaving a device or network.
+
+### 4. What is the difference between source and destination IP?
+
+The source IP identifies where traffic originated, while the destination IP identifies where it is going.
+
+### 5. Why are ports used in firewall rules?
+
+Ports identify network services or applications, allowing administrators to control access to specific services.
+
+### 6. What protocols can a firewall filter?
+
+Depending on the firewall, rules can filter protocols such as TCP, UDP, and ICMP.
+
+### 7. What happens when traffic matches a deny rule?
+
+The firewall blocks or rejects the traffic according to its configuration.
+
+### 8. Why is firewall logging important for SOC analysts?
+
+Firewall logs provide evidence about network connections, including source, destination, ports, protocols, and whether traffic was allowed or blocked.
+
+---
+
+# 💡 Key Takeaways
+
+* Learned what a firewall does
+* Understood ALLOW and DENY
+* Learned inbound and outbound traffic
+* Learned source and destination IP
+* Learned source and destination ports
+* Learned TCP, UDP, and ICMP in firewall rules
+* Learned how firewall rules work
+* Understood rule ordering
+* Practiced Windows Firewall commands
+* Connected firewall logs with SOC investigations
+
+---
+
+# 📸 Evidence to Upload
+
+Add screenshots showing:
+
+```text
+1. Windows Firewall profile
+2. Firewall rules
+3. PowerShell firewall output
+4. netstat output
+5. Your firewall rule analysis
+```
+
+⚠️ Before uploading screenshots publicly, hide sensitive information such as public IP addresses, usernames, hostnames, VPN details, or other private network information if necessary.
+
+---
+
+# ✅ Day 10 Completion Checklist
+
+* [x] Learned what a firewall is
+* [x] Learned Allow
+* [x] Learned Deny
+* [x] Learned inbound traffic
+* [x] Learned outbound traffic
+* [x] Learned source IP
+* [x] Learned destination IP
+* [x] Learned source port
+* [x] Learned destination port
+* [x] Learned protocols
+* [x] Learned firewall rules
+* [x] Practiced Windows Firewall
+* [x] Connected firewall concepts with SOC analysis
+
+---
+
+## 🚀 Day 10 Status
+
+**Completed ✅**
+
+**Next:** Day 11 — Linux Networking + SSH + Firewall Fundamentals
