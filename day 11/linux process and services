@@ -1,0 +1,571 @@
+# Day 11 — Linux Processes & Services
+
+## 🎯 Objective
+
+Learn how Linux manages running programs, processes, and services.
+
+Today I learned how to:
+
+* Identify running processes
+* Understand PIDs
+* Monitor CPU and memory usage
+* Understand process states
+* View processes using `ps` and `top`
+* Understand Linux services
+* Check service status using `systemctl`
+* Investigate suspicious processes
+
+---
+
+# 1. What is a Process?
+
+A **process** is a running instance of a program.
+
+For example, when you open a terminal and run:
+
+```bash
+python3 test.py
+```
+
+Linux creates a process for that program.
+
+Each process receives a unique **PID (Process ID)**.
+
+Example:
+
+```text
+PID
+1234
+```
+
+The PID allows Linux to identify and manage that process.
+
+---
+
+# 2. What is PID?
+
+**PID = Process ID**
+
+Every running process normally has a unique PID.
+
+Find the PID of a process:
+
+```bash
+pgrep bash
+```
+
+or:
+
+```bash
+pidof bash
+```
+
+You can also use:
+
+```bash
+ps
+```
+
+---
+
+# 3. Viewing Processes with `ps`
+
+The `ps` command displays information about running processes.
+
+Basic command:
+
+```bash
+ps
+```
+
+For a more detailed process list:
+
+```bash
+ps aux
+```
+
+Important columns include:
+
+```text
+USER
+PID
+%CPU
+%MEM
+VSZ
+RSS
+STAT
+START
+TIME
+COMMAND
+```
+
+### Important fields
+
+**USER** → user running the process
+
+**PID** → process ID
+
+**%CPU** → CPU usage
+
+**%MEM** → memory usage
+
+**STAT** → process state
+
+**COMMAND** → command/program running
+
+---
+
+# 4. Monitoring Processes with `top`
+
+The `top` command provides real-time process information.
+
+Run:
+
+```bash
+top
+```
+
+Important columns:
+
+```text
+PID
+USER
+PR
+NI
+VIRT
+RES
+SHR
+S
+%CPU
+%MEM
+TIME+
+COMMAND
+```
+
+### Important fields
+
+* **PID** → process ID
+* **USER** → process owner
+* **PR** → priority
+* **NI** → nice value
+* **VIRT** → virtual memory
+* **RES** → physical RAM currently resident
+* **SHR** → potentially shared memory
+* **S** → process state
+* **%CPU** → CPU usage
+* **%MEM** → memory usage
+* **COMMAND** → program name
+
+Exit `top` with:
+
+```text
+q
+```
+
+---
+
+# 5. Linux Process States
+
+The `S` column in `top` or `STAT` in `ps` shows process state.
+
+Common states:
+
+```text
+R → Running / runnable
+S → Sleeping
+D → Uninterruptible sleep
+T → Stopped
+Z → Zombie
+```
+
+### Zombie Process
+
+A **zombie** is a process that has finished execution but still has an entry in the process table because its parent has not yet collected its exit status.
+
+A few zombies can occur normally, but a large or persistent number may require investigation.
+
+---
+
+# 6. CPU and Memory Investigation
+
+Use:
+
+```bash
+top
+```
+
+Look for processes with unusually high:
+
+```text
+%CPU
+%MEM
+```
+
+You can also use:
+
+```bash
+ps aux --sort=-%cpu
+```
+
+to display processes sorted by CPU usage.
+
+For memory:
+
+```bash
+ps aux --sort=-%mem
+```
+
+### Important
+
+High CPU or memory usage **does not automatically mean malware**.
+
+First identify:
+
+1. Process name
+2. PID
+3. User
+4. CPU usage
+5. Memory usage
+6. Executable path
+7. Parent process
+8. Network connections
+9. Whether the process is expected
+
+---
+
+# 7. What is a Linux Service?
+
+A **service** is a background program that provides a system function.
+
+Examples:
+
+```text
+SSH
+Network services
+Web servers
+Database servers
+Logging services
+```
+
+Many Linux systems use **systemd** to manage services.
+
+---
+
+# 8. `systemctl`
+
+`systemctl` is commonly used to manage systemd services.
+
+Check SSH service:
+
+```bash
+systemctl status ssh
+```
+
+On some distributions:
+
+```bash
+systemctl status sshd
+```
+
+Check whether a service is running:
+
+```bash
+systemctl is-active ssh
+```
+
+Check whether it starts automatically during boot:
+
+```bash
+systemctl is-enabled ssh
+```
+
+---
+
+# 9. Starting and Stopping Services
+
+With appropriate privileges:
+
+```bash
+sudo systemctl start ssh
+```
+
+Stop:
+
+```bash
+sudo systemctl stop ssh
+```
+
+Restart:
+
+```bash
+sudo systemctl restart ssh
+```
+
+⚠️ Do not randomly stop system services on your main Linux installation. Practice in a VM/lab environment.
+
+---
+
+# 10. Process vs Service
+
+These terms are related but different.
+
+### Process
+
+A currently running instance of a program.
+
+Example:
+
+```text
+PID 2451 → sshd
+```
+
+### Service
+
+A managed background application/function, often controlled by `systemd`.
+
+Example:
+
+```text
+ssh.service
+```
+
+A service may start one or more processes.
+
+---
+
+# 🔍 Mini SOC Investigation
+
+Imagine you see this in `top`:
+
+```text
+PID     USER      %CPU    COMMAND
+2451    root      95.0    suspicious_process
+```
+
+Do not immediately conclude that it is malware.
+
+Investigate it.
+
+### Step 1 — Identify the process
+
+```bash
+ps -p 2451 -f
+```
+
+### Step 2 — Find the executable
+
+```bash
+readlink -f /proc/2451/exe
+```
+
+### Step 3 — Check the parent process
+
+```bash
+ps -o pid,ppid,user,cmd -p 2451
+```
+
+### Step 4 — Check network connections
+
+```bash
+sudo ss -tunap
+```
+
+### Step 5 — Check open files
+
+```bash
+sudo lsof -p 2451
+```
+
+Questions to ask:
+
+* Is this process expected?
+* Which user started it?
+* Where is the executable located?
+* Who is its parent process?
+* Is it communicating with the network?
+* Does it belong to a legitimate service?
+
+This is basic **process investigation**, which is important for SOC analysts.
+
+---
+
+# 🧪 Practical Lab
+
+Run these commands:
+
+### 1. View processes
+
+```bash
+ps aux
+```
+
+### 2. Monitor processes
+
+```bash
+top
+```
+
+### 3. Find your shell process
+
+```bash
+pgrep bash
+```
+
+If you use another shell, try:
+
+```bash
+pgrep zsh
+```
+
+### 4. Sort by CPU
+
+```bash
+ps aux --sort=-%cpu
+```
+
+### 5. Sort by memory
+
+```bash
+ps aux --sort=-%mem
+```
+
+### 6. Check SSH service
+
+```bash
+systemctl status ssh
+```
+
+or:
+
+```bash
+systemctl status sshd
+```
+
+### 7. Check active services
+
+```bash
+systemctl --type=service --state=running
+```
+
+---
+
+# 📸 Screenshots to Upload
+
+Recommended GitHub structure:
+
+```text
+Day-11/
+│
+├── README.md
+│
+└── screenshots/
+    ├── ps-aux.png
+    ├── top-command.png
+    ├── cpu-processes.png
+    ├── memory-processes.png
+    └── ssh-service-status.png
+```
+
+Before uploading screenshots, check that they don't reveal:
+
+* Passwords
+* SSH private keys
+* API tokens
+* Sensitive usernames
+* Internal IP addresses
+* Company information
+* Other sensitive system information
+
+---
+
+# 🎯 Interview Questions
+
+### Q1. What is a process?
+
+A process is a running instance of a program.
+
+### Q2. What is PID?
+
+PID stands for **Process ID**, a numerical identifier assigned to a process.
+
+### Q3. What does `top` do?
+
+`top` provides a real-time view of running processes and system resource usage.
+
+### Q4. What is the difference between VIRT and RES?
+
+**VIRT** represents the virtual memory associated with a process, while **RES** represents memory currently resident in physical RAM.
+
+### Q5. What is a zombie process?
+
+A zombie is a completed process whose entry remains in the process table because its parent has not yet collected its exit status.
+
+### Q6. What is `systemctl`?
+
+`systemctl` is a command used to inspect and manage services controlled by systemd.
+
+### Q7. How do you check whether SSH is running?
+
+```bash
+systemctl status ssh
+```
+
+or:
+
+```bash
+systemctl status sshd
+```
+
+---
+
+# 🔐 Cybersecurity Relevance
+
+Process and service monitoring helps SOC analysts investigate:
+
+* Unexpected processes
+* High CPU usage
+* High memory usage
+* Unauthorized services
+* Suspicious executables
+* Persistence mechanisms
+* Network-connected processes
+* Compromised accounts
+
+A basic investigation flow is:
+
+```text
+Suspicious Process
+       ↓
+Find PID
+       ↓
+Identify User
+       ↓
+Find Executable
+       ↓
+Check Parent Process
+       ↓
+Check Network Connections
+       ↓
+Check Logs
+       ↓
+Determine Whether Activity Is Expected
+```
+
+---
+
+# ✅ Day 11 Completion Checklist
+
+* [ ] Understand processes
+* [ ] Understand PID
+* [ ] Practice `ps`
+* [ ] Practice `top`
+* [ ] Understand CPU and memory usage
+* [ ] Understand process states
+* [ ] Understand zombie processes
+* [ ] Understand Linux services
+* [ ] Practice `systemctl`
+* [ ] Investigate a process
+* [ ] Capture screenshots
+* [ ] Upload README to GitHub
+
+**Progress: Day 11 / 180 🚀**
