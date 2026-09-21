@@ -1,0 +1,624 @@
+# Day 13 — Linux Log Analysis: grep, awk & journalctl
+
+## 🎯 Objective
+
+Learn how to analyze Linux logs using:
+
+* `grep`
+* `awk`
+* `journalctl`
+* `tail`
+* Basic log filtering and investigation
+
+These commands are useful for SOC analysts because logs contain important evidence about authentication, services, errors, and suspicious activity.
+
+---
+
+# 1. What is Log Analysis?
+
+**Log analysis** is the process of examining system and application logs to identify important events, errors, or suspicious activity.
+
+A SOC analyst may investigate:
+
+```text
+Login attempts
+SSH activity
+Failed authentication
+Service activity
+System errors
+Suspicious processes
+Network-related events
+```
+
+Common Linux logs are stored under:
+
+```bash
+/var/log/
+```
+
+View the directory:
+
+```bash
+ls -lah /var/log/
+```
+
+---
+
+# 2. `grep`
+
+`grep` is used to search for specific text or patterns in files and command output.
+
+Basic syntax:
+
+```bash
+grep "pattern" filename
+```
+
+Example:
+
+```bash
+grep "error" /var/log/syslog
+```
+
+This searches for lines containing `error`.
+
+---
+
+# 3. Case-Insensitive Search
+
+Use `-i` to ignore uppercase/lowercase differences.
+
+```bash
+grep -i "error" /var/log/syslog
+```
+
+For example, this can find:
+
+```text
+error
+Error
+ERROR
+```
+
+---
+
+# 4. Search SSH Authentication Events
+
+On Ubuntu/Debian systems, SSH authentication events may be present in:
+
+```text
+/var/log/auth.log
+```
+
+Search for failed passwords:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+Search for successful authentication:
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+Search for SSH-related entries:
+
+```bash
+sudo grep -i "ssh" /var/log/auth.log
+```
+
+---
+
+# 5. `grep -n`
+
+The `-n` option displays line numbers.
+
+```bash
+grep -n "Failed password" /var/log/auth.log
+```
+
+This can help locate the relevant log entries.
+
+---
+
+# 6. `grep -v`
+
+The `-v` option excludes matching lines.
+
+Example:
+
+```bash
+grep -v "systemd" /var/log/syslog
+```
+
+This displays lines that do **not** contain `systemd`.
+
+---
+
+# 7. `grep -c`
+
+The `-c` option counts matching lines.
+
+Example:
+
+```bash
+grep -c "Failed password" /var/log/auth.log
+```
+
+This can help determine how many matching events were recorded.
+
+---
+
+# 8. `tail`
+
+`tail` displays the end of a file.
+
+View the last 30 lines:
+
+```bash
+tail -n 30 /var/log/auth.log
+```
+
+Monitor new entries in real time:
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+Press:
+
+```text
+Ctrl + C
+```
+
+to stop monitoring.
+
+---
+
+# 9. `journalctl`
+
+`journalctl` is used to view logs collected by the **systemd journal**.
+
+View recent logs:
+
+```bash
+journalctl -n 30
+```
+
+View logs from the current boot:
+
+```bash
+journalctl -b
+```
+
+Follow new logs in real time:
+
+```bash
+journalctl -f
+```
+
+---
+
+# 10. View SSH Logs with journalctl
+
+Depending on the Linux distribution, the SSH service may be called `ssh` or `sshd`.
+
+Try:
+
+```bash
+journalctl -u ssh
+```
+
+If that doesn't work:
+
+```bash
+journalctl -u sshd
+```
+
+Follow SSH logs in real time:
+
+```bash
+journalctl -u ssh -f
+```
+
+or:
+
+```bash
+journalctl -u sshd -f
+```
+
+---
+
+# 11. Filter journalctl by Time
+
+Show logs from today:
+
+```bash
+journalctl --since today
+```
+
+Show logs from the last hour:
+
+```bash
+journalctl --since "1 hour ago"
+```
+
+Show logs from a specific time period:
+
+```bash
+journalctl --since "2026-09-21 10:00:00" --until "2026-09-21 12:00:00"
+```
+
+---
+
+# 12. Filter journalctl by Priority
+
+You can filter logs based on severity.
+
+For example:
+
+```bash
+journalctl -p err
+```
+
+This displays error-level messages.
+
+You can also use:
+
+```bash
+journalctl -p warning
+```
+
+to view warning-level events.
+
+---
+
+# 13. `awk`
+
+`awk` is useful for extracting and processing specific fields from text.
+
+Basic syntax:
+
+```bash
+awk '{print $1}' filename
+```
+
+Example:
+
+```bash
+awk '{print $1}' /var/log/auth.log
+```
+
+This prints the first whitespace-separated field from each line.
+
+Second field:
+
+```bash
+awk '{print $2}' /var/log/auth.log
+```
+
+Third field:
+
+```bash
+awk '{print $3}' /var/log/auth.log
+```
+
+---
+
+# 14. Combining `grep` and `awk`
+
+This is very useful for basic log analysis.
+
+For example:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}'
+```
+
+The exact field containing the IP address can vary depending on the log format, so **always inspect a sample log line first**.
+
+A safer learning approach is:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+Then identify which field contains:
+
+* Username
+* Source IP
+* Timestamp
+* Authentication result
+
+and use `awk` accordingly.
+
+---
+
+# 15. Example Log Investigation
+
+Suppose you find:
+
+```text
+Failed password for invalid user admin from 192.168.1.50
+```
+
+Important information includes:
+
+```text
+Event       → Failed authentication
+Username    → admin
+Source IP   → 192.168.1.50
+```
+
+A SOC analyst can then investigate:
+
+* How many times did this IP attempt authentication?
+* Which usernames were targeted?
+* Did authentication eventually succeed?
+* When did the activity occur?
+* Is the source IP expected?
+* What happened after a successful login?
+
+---
+
+# 🔍 Mini SOC Investigation
+
+Search for failed SSH authentication:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+Count the events:
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+Search successful SSH authentication:
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+Check recent SSH journal events:
+
+```bash
+journalctl -u ssh -n 30
+```
+
+If necessary:
+
+```bash
+journalctl -u sshd -n 30
+```
+
+---
+
+# 🧪 Practical Lab
+
+## Step 1 — Find authentication logs
+
+```bash
+ls -lah /var/log/
+```
+
+## Step 2 — View recent authentication events
+
+```bash
+sudo tail -n 30 /var/log/auth.log
+```
+
+## Step 3 — Find failed authentication
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+## Step 4 — Count failed authentication events
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+## Step 5 — Find successful authentication
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+## Step 6 — View SSH journal logs
+
+```bash
+journalctl -u ssh -n 30
+```
+
+If required:
+
+```bash
+journalctl -u sshd -n 30
+```
+
+## Step 7 — View errors
+
+```bash
+journalctl -p err
+```
+
+## Step 8 — Monitor logs in real time
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+or:
+
+```bash
+journalctl -f
+```
+
+---
+
+# 🔐 SOC Investigation Workflow
+
+A basic Linux log investigation can follow this process:
+
+```text
+Log Source
+    ↓
+grep / journalctl
+    ↓
+Filter Important Events
+    ↓
+Identify Timestamp
+    ↓
+Identify Username
+    ↓
+Identify Source IP
+    ↓
+Count Repeated Events
+    ↓
+Check Successful Login
+    ↓
+Investigate Activity After Login
+```
+
+---
+
+# 📊 Commands Learned
+
+| Command         | Purpose                    |
+| --------------- | -------------------------- |
+| `grep`          | Search log content         |
+| `grep -i`       | Case-insensitive search    |
+| `grep -n`       | Show line numbers          |
+| `grep -c`       | Count matching lines       |
+| `grep -v`       | Exclude matching lines     |
+| `awk`           | Extract/process fields     |
+| `tail`          | View end of a log          |
+| `tail -f`       | Monitor a log in real time |
+| `journalctl`    | View systemd journal logs  |
+| `journalctl -u` | View service logs          |
+| `journalctl -p` | Filter by priority         |
+| `journalctl -f` | Follow new log events      |
+
+---
+
+# 🎯 Interview Questions
+
+### Q1. What is `grep`?
+
+`grep` is a Linux command used to search text for matching patterns.
+
+### Q2. What is `awk`?
+
+`awk` is a text-processing tool commonly used to extract and process fields from structured text.
+
+### Q3. What is `journalctl`?
+
+`journalctl` is used to view and filter logs collected by the systemd journal.
+
+### Q4. How do you search for failed SSH authentication?
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+### Q5. How do you view SSH service logs?
+
+```bash
+journalctl -u ssh
+```
+
+or:
+
+```bash
+journalctl -u sshd
+```
+
+### Q6. How do you monitor logs in real time?
+
+```bash
+journalctl -f
+```
+
+or:
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+### Q7. Why is log analysis important for a SOC analyst?
+
+Log analysis helps identify authentication attempts, errors, suspicious activity, system events, and evidence that can be used during security investigations.
+
+---
+
+# 📸 Screenshots to Upload
+
+Recommended structure:
+
+```text
+Day-13/
+│
+├── README.md
+│
+└── screenshots/
+    ├── grep-search.png
+    ├── failed-authentication.png
+    ├── journalctl.png
+    ├── awk-analysis.png
+    └── realtime-log-monitoring.png
+```
+
+### ⚠️ Security Warning
+
+Before uploading screenshots, hide sensitive information such as:
+
+* Public IP addresses
+* Private keys
+* Passwords
+* API tokens
+* Sensitive usernames
+* Company information
+* Personal information
+
+---
+
+# 📝 Day 13 Key Learning
+
+Today I learned how to analyze Linux logs using:
+
+```text
+grep
+awk
+journalctl
+tail
+```
+
+I practiced filtering authentication events, searching for failed and successful SSH logins, extracting information from log entries, and monitoring logs in real time.
+
+These skills form the foundation for **SOC log analysis and SIEM investigations**.
+
+---
+
+# ✅ Day 13 Completion Checklist
+
+* [ ] Understand Linux log analysis
+* [ ] Learn `grep`
+* [ ] Learn `awk`
+* [ ] Learn `journalctl`
+* [ ] Practice `tail`
+* [ ] Analyze authentication logs
+* [ ] Find failed SSH attempts
+* [ ] Find successful SSH attempts
+* [ ] Filter journal logs
+* [ ] Practice real-time monitoring
+* [ ] Complete SOC investigation
+* [ ] Capture screenshots
+* [ ] Upload README to GitHub
+
+**Progress: Day 13 / 180 🚀**
+
+**Next → Day 14: Linux Networking & Log Correlation**
