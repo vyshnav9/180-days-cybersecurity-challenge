@@ -1,0 +1,570 @@
+# 🔐 Day 14 — SSH Authentication Monitoring & Brute-Force Detection
+
+## 🎯 Objective
+
+Learn how to monitor SSH authentication events and identify possible **brute-force attacks** using Linux logs, `grep`, `awk`, and `journalctl`.
+
+### Today I learned:
+
+* SSH authentication events
+* Successful vs failed logins
+* Brute-force attack indicators
+* Detecting repeated authentication failures
+* Identifying source IP addresses
+* Counting failed attempts
+* Investigating suspicious users
+* Creating a basic SOC detection workflow
+
+---
+
+## 1. What is SSH Authentication?
+
+SSH authentication is the process used to verify the identity of a user when connecting to a Linux system remotely.
+
+Example:
+
+```text
+SSH Client → Linux SSH Server
+           ↓
+       Authentication
+           ↓
+      Success / Failure
+```
+
+SSH commonly uses:
+
+* Password authentication
+* SSH key authentication
+
+---
+
+## 2. Failed vs Successful Authentication
+
+### Failed login
+
+Example:
+
+```text
+Failed password for invalid user admin from 192.168.1.50 port 52341 ssh2
+```
+
+This indicates an unsuccessful authentication attempt.
+
+### Successful login
+
+Example:
+
+```text
+Accepted password for user1 from 192.168.1.50 port 52341 ssh2
+```
+
+This indicates successful authentication.
+
+> A single failed login does not automatically mean an attack. Repeated failures from the same source in a short period are more suspicious.
+
+---
+
+# 3. Find Failed SSH Logins
+
+On Ubuntu/Debian:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+Count failed attempts:
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+Search without case sensitivity:
+
+```bash
+sudo grep -i "failed password" /var/log/auth.log
+```
+
+---
+
+# 4. Find Successful SSH Logins
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+Count successful logins:
+
+```bash
+sudo grep -c "Accepted" /var/log/auth.log
+```
+
+This can help investigate whether repeated failed attempts were followed by a successful login.
+
+---
+
+# 5. Monitor SSH Logs in Real Time
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+Then, in another terminal, generate a legitimate SSH authentication event in your own lab.
+
+Stop monitoring with:
+
+```text
+Ctrl + C
+```
+
+---
+
+# 6. Using journalctl
+
+Some Linux systems store SSH authentication events in the systemd journal.
+
+Check SSH logs:
+
+```bash
+sudo journalctl -u ssh
+```
+
+On systems using `sshd` as the service name:
+
+```bash
+sudo journalctl -u sshd
+```
+
+Show recent events:
+
+```bash
+sudo journalctl -n 30
+```
+
+Show today's logs:
+
+```bash
+sudo journalctl --since today
+```
+
+Monitor in real time:
+
+```bash
+sudo journalctl -f
+```
+
+---
+
+# 7. Detect Repeated Failed Authentication
+
+A common SOC detection idea is:
+
+```text
+IF
+multiple SSH authentication failures
+FROM the same source IP
+WITHIN a short time period
+
+THEN
+flag the activity for investigation.
+```
+
+Example log entries:
+
+```text
+Failed password for invalid user admin from 192.168.1.50
+Failed password for invalid user admin from 192.168.1.50
+Failed password for invalid user test from 192.168.1.50
+Failed password for user1 from 192.168.1.50
+```
+
+The same source IP repeatedly attempting authentication is an indicator worth investigating.
+
+---
+
+# 8. Extract Source IP Addresses with awk
+
+First inspect the log format:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | head
+```
+
+Then extract fields.
+
+For a typical Ubuntu SSH log:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}'
+```
+
+This may produce:
+
+```text
+192.168.1.50
+192.168.1.50
+192.168.1.50
+192.168.1.25
+```
+
+⚠️ Log field positions can vary between systems, so always inspect a sample line before assuming the IP is field `$11`.
+
+---
+
+# 9. Count Attempts by Source IP
+
+Example:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}' | sort | uniq -c | sort -nr
+```
+
+Possible output:
+
+```text
+15 192.168.1.50
+7  192.168.1.25
+2  192.168.1.10
+```
+
+This helps identify which source IP generated the most failed authentication events.
+
+### SOC interpretation
+
+```text
+192.168.1.50 → 15 failures
+192.168.1.25 → 7 failures
+192.168.1.10 → 2 failures
+```
+
+The first IP would be investigated further because it generated the highest number of failures.
+
+**Note:** The number alone does not prove malicious activity.
+
+---
+
+# 10. Investigate Invalid Users
+
+Search for invalid-user attempts:
+
+```bash
+sudo grep "invalid user" /var/log/auth.log
+```
+
+Example:
+
+```text
+Failed password for invalid user admin from 192.168.1.50
+```
+
+Important investigation questions:
+
+1. Does the username actually exist?
+2. What is the source IP?
+3. How many attempts occurred?
+4. When did the attempts occur?
+5. Were there successful logins afterward?
+6. Is the source IP expected?
+7. What happened after a successful login?
+
+---
+
+# 11. Basic Brute-Force Detection Workflow
+
+```text
+SSH Logs
+   ↓
+Find failed authentication events
+   ↓
+Extract source IP
+   ↓
+Count attempts
+   ↓
+Look for repeated attempts
+   ↓
+Check successful authentication
+   ↓
+Investigate account activity
+   ↓
+Determine whether further action is required
+```
+
+---
+
+# 🧪 12. Mini SOC Investigation
+
+Assume your logs contain:
+
+```text
+Sep 22 18:01:10 server sshd[1001]: Failed password for invalid user admin from 192.168.1.50
+Sep 22 18:01:15 server sshd[1002]: Failed password for invalid user admin from 192.168.1.50
+Sep 22 18:01:20 server sshd[1003]: Failed password for invalid user admin from 192.168.1.50
+Sep 22 18:01:25 server sshd[1004]: Failed password for user1 from 192.168.1.50
+```
+
+### Investigation
+
+**Source IP:**
+
+```text
+192.168.1.50
+```
+
+**Observed activity:**
+
+```text
+Multiple failed SSH authentication attempts
+```
+
+**Target accounts:**
+
+```text
+admin
+user1
+```
+
+### Questions to investigate
+
+```text
+1. How many failures occurred?
+2. Did they come from the same IP?
+3. Were different usernames targeted?
+4. Did a successful login occur afterward?
+5. Is the source IP expected?
+6. What activity occurred after authentication?
+```
+
+---
+
+# 🛡️ 13. Defensive Measures
+
+Organizations can reduce SSH attack exposure by using:
+
+* SSH key authentication
+* Strong authentication controls
+* Disabling unnecessary password authentication
+* Restricting SSH access
+* Monitoring authentication logs
+* Rate limiting / intrusion prevention controls
+* Keeping systems updated
+* Using least-privilege accounts
+* Monitoring privileged account activity
+
+---
+
+# 💻 14. Practical Lab
+
+Perform these commands on your Linux lab machine:
+
+### Step 1 — View authentication logs
+
+```bash
+sudo tail -n 30 /var/log/auth.log
+```
+
+### Step 2 — Search failed authentication
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+### Step 3 — Count failures
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+### Step 4 — Search successful authentication
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+### Step 5 — Extract source IPs
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}'
+```
+
+### Step 6 — Count IP addresses
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}' | sort | uniq -c | sort -nr
+```
+
+### Step 7 — Monitor authentication events
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+---
+
+# 📊 15. SOC Detection Logic
+
+A basic detection rule can be represented as:
+
+```text
+IF
+
+SSH authentication failures >= threshold
+
+AND
+
+multiple failures originate from the same source IP
+
+AND
+
+events occur within a short time window
+
+THEN
+
+flag the source for investigation.
+```
+
+Example:
+
+```text
+Source IP: 192.168.1.50
+Failed attempts: 15
+Time window: 2 minutes
+Target: SSH
+Status: Investigation required
+```
+
+---
+
+# 🎯 16. Interview Questions
+
+### Q1. What is SSH brute force?
+
+A repeated attempt to authenticate to an SSH service using different passwords, usernames, or credentials.
+
+### Q2. Which log contains SSH authentication events on Ubuntu?
+
+Usually:
+
+```text
+/var/log/auth.log
+```
+
+### Q3. How do you find failed SSH logins?
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+### Q4. How do you find successful SSH logins?
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+### Q5. How can you identify the source IP?
+
+Use log filtering and `awk` to extract the IP field after inspecting the log format.
+
+### Q6. What is an indicator of SSH brute-force activity?
+
+Repeated authentication failures from the same source IP within a relatively short period, especially when multiple accounts are targeted.
+
+### Q7. Does one failed login mean brute force?
+
+No. A single failed login can be caused by a mistyped password or other legitimate reason.
+
+### Q8. Why is log analysis important for a SOC analyst?
+
+Logs provide evidence about authentication, network activity, processes, errors, and other security events that can be correlated during an investigation.
+
+---
+
+# 📁 17. GitHub Upload Structure
+
+```text
+180-days-cybersecurity-challenge/
+│
+├── Day-14/
+│   ├── README.md
+│   │
+│   └── screenshots/
+│       ├── failed-ssh-login.png
+│       ├── successful-ssh-login.png
+│       ├── ssh-log-monitoring.png
+│       ├── source-ip-analysis.png
+│       └── brute-force-detection.png
+```
+
+### Screenshots to capture
+
+**1. `failed-ssh-login.png`**
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+**2. `successful-ssh-login.png`**
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+**3. `ssh-log-monitoring.png`**
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+**4. `source-ip-analysis.png`**
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}'
+```
+
+**5. `brute-force-detection.png`**
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | awk '{print $11}' | sort | uniq -c | sort -nr
+```
+
+---
+
+# 🔐 Security Reminder
+
+Before uploading screenshots to GitHub, hide:
+
+* Public IP addresses
+* Passwords
+* SSH private keys
+* API tokens
+* Sensitive usernames
+* Company/server information
+* Personal information
+
+Private lab IPs such as `192.168.x.x` are generally less sensitive, but you can still redact them if you prefer.
+
+---
+
+# ✅ Day 14 Checklist
+
+* [ ] Understand SSH authentication
+* [ ] Identify failed SSH logins
+* [ ] Identify successful SSH logins
+* [ ] Use `grep` for authentication analysis
+* [ ] Use `awk` to extract fields
+* [ ] Count failed attempts
+* [ ] Identify source IPs
+* [ ] Understand brute-force indicators
+* [ ] Monitor SSH logs in real time
+* [ ] Complete the mini SOC investigation
+* [ ] Upload README + screenshots to GitHub
+
+---
+
+## 🚀 Progress
+
+**Day 14 / 180 completed**
+
+> **Skill gained:** SSH Authentication Monitoring + Brute-Force Detection
+
+### Next → Day 15
+
+**Linux Firewall Monitoring + SSH Attack Prevention**
