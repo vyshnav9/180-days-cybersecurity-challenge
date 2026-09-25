@@ -1,0 +1,701 @@
+# 🔐 Day 15 — Linux Privilege & `sudo` Activity Monitoring
+
+## 🎯 Objective
+
+Learn how Linux handles user privileges and how to monitor `sudo` activity for suspicious or unauthorized privilege escalation attempts.
+
+### Today I learned:
+
+* Linux user privileges
+* Root user
+* `sudo`
+* Privilege escalation
+* `sudo` authentication events
+* Successful vs failed `sudo` attempts
+* Monitoring `sudo` activity with `grep`
+* Monitoring `sudo` activity with `journalctl`
+* Basic SOC investigation of privilege-related activity
+
+---
+
+# 1. What is Linux Privilege?
+
+Linux uses permissions and privileges to control what users and processes can do.
+
+For example, a normal user may not be allowed to:
+
+* Modify protected system files
+* Install system-wide software
+* Change certain system configurations
+* Manage some services
+* Access protected resources
+
+A user with higher privileges can perform more administrative operations.
+
+---
+
+# 2. Root User
+
+The **root user** is the superuser account in Linux.
+
+Root has extensive permissions over the system.
+
+You can check the current user:
+
+```bash
+whoami
+```
+
+Check user and group information:
+
+```bash
+id
+```
+
+Example:
+
+```text
+uid=1000(user) gid=1000(user) groups=1000(user),27(sudo)
+```
+
+---
+
+# 3. What is `sudo`?
+
+`sudo` allows an authorized user to execute commands with elevated privileges.
+
+Example:
+
+```bash
+sudo apt update
+```
+
+The command may require authentication depending on the system's configuration.
+
+Instead of logging in directly as root, administrators can use `sudo` to perform specific administrative tasks.
+
+---
+
+# 4. Why is `sudo` Important for Security?
+
+`sudo` creates an important security boundary.
+
+For example:
+
+```text
+Normal User
+     ↓
+   sudo
+     ↓
+Elevated Privilege
+     ↓
+Administrative Command
+```
+
+If an attacker compromises a normal user account and obtains access to `sudo` privileges, they may be able to perform administrative actions.
+
+Therefore, SOC analysts should monitor unusual `sudo` activity.
+
+---
+
+# 5. Check Whether a User Can Use sudo
+
+Run:
+
+```bash
+sudo -l
+```
+
+This displays the commands the current user is allowed to execute with `sudo`.
+
+Example:
+
+```text
+User user may run the following commands:
+    (ALL : ALL) ALL
+```
+
+This indicates that the user has broad `sudo` privileges.
+
+⚠️ Do not copy sensitive system configuration into public GitHub repositories.
+
+---
+
+# 6. `sudo` Authentication Logs
+
+Linux systems record many `sudo` events in authentication/system logs.
+
+On Ubuntu/Debian, check:
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+You may see an entry similar to:
+
+```text
+user : TTY=pts/0 ; PWD=/home/user ; USER=root ; COMMAND=/usr/bin/apt update
+```
+
+Important information includes:
+
+```text
+User
+TTY
+Working directory
+Target user
+Command executed
+```
+
+---
+
+# 7. Search for Successful sudo Activity
+
+Use:
+
+```bash
+sudo grep "sudo:" /var/log/auth.log
+```
+
+You can also search for:
+
+```bash
+sudo grep "COMMAND=" /var/log/auth.log
+```
+
+This can help identify commands executed through `sudo`.
+
+---
+
+# 8. Search for Failed sudo Authentication
+
+Search for authentication failures:
+
+```bash
+sudo grep -i "authentication failure" /var/log/auth.log
+```
+
+You can also search more broadly:
+
+```bash
+sudo grep -i "sudo" /var/log/auth.log
+```
+
+Look for events indicating:
+
+* Authentication failure
+* Incorrect password
+* Unauthorized user
+* Repeated attempts
+
+---
+
+# 9. Using journalctl
+
+If your system uses the systemd journal, search for `sudo` activity:
+
+```bash
+sudo journalctl | grep sudo
+```
+
+You can also search the authentication-related journal messages:
+
+```bash
+sudo journalctl -g sudo
+```
+
+View recent events:
+
+```bash
+sudo journalctl -n 50
+```
+
+---
+
+# 10. Monitor sudo Activity in Real Time
+
+Using the authentication log:
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+Or using the system journal:
+
+```bash
+sudo journalctl -f
+```
+
+You can then perform legitimate `sudo` commands in your own lab and observe the resulting log events.
+
+Stop monitoring:
+
+```text
+Ctrl + C
+```
+
+---
+
+# 11. What is Privilege Escalation?
+
+**Privilege escalation** occurs when a user or process gains higher privileges than it should have.
+
+Example:
+
+```text
+Normal User
+     ↓
+Higher Privileges
+     ↓
+Root / Administrative Access
+```
+
+Privilege escalation can be:
+
+### Vertical privilege escalation
+
+A lower-privileged user gains higher privileges.
+
+Example:
+
+```text
+Normal User → Root
+```
+
+### Horizontal privilege escalation
+
+A user gains access to another account or resources with similar privilege levels.
+
+Example:
+
+```text
+User A → User B
+```
+
+---
+
+# 12. Why SOC Analysts Monitor sudo
+
+Unusual `sudo` activity may indicate:
+
+* An attacker attempting privilege escalation
+* A compromised account
+* Unauthorized administrative activity
+* A suspicious script
+* An unusual command executed as root
+* Abuse of excessive privileges
+
+However:
+
+> **A `sudo` command is not automatically malicious.**
+
+Administrators routinely use `sudo` for legitimate system management.
+
+Context is important.
+
+---
+
+# 🔍 13. Mini SOC Investigation
+
+Suppose you find:
+
+```text
+user1 : TTY=pts/0 ; PWD=/home/user1 ; USER=root ; COMMAND=/usr/bin/cat /etc/shadow
+```
+
+Investigate:
+
+### 1. Which user executed the command?
+
+```text
+user1
+```
+
+### 2. Which user was targeted?
+
+```text
+root
+```
+
+### 3. What command was executed?
+
+```text
+cat /etc/shadow
+```
+
+### 4. Where was the command executed?
+
+```text
+/home/user1
+```
+
+### 5. Is this expected?
+
+Investigate whether the user normally performs administrative tasks.
+
+### 6. What should you check next?
+
+* User login history
+* SSH authentication logs
+* Other `sudo` commands
+* Processes created afterward
+* File modifications
+* Network connections
+* Account privileges
+
+---
+
+# 14. Correlating SSH + sudo Activity
+
+A useful SOC investigation is to connect authentication events with privilege activity.
+
+Example:
+
+```text
+18:01 → SSH login from source IP
+18:02 → Successful authentication
+18:03 → sudo command executed
+18:04 → New administrative process started
+```
+
+This sequence deserves investigation because it connects:
+
+```text
+Remote Access
+      ↓
+Authentication
+      ↓
+Privilege Use
+      ↓
+System Activity
+```
+
+The sequence alone does not prove compromise, but it provides useful investigative context.
+
+---
+
+# 🧪 15. Practical Lab
+
+## Step 1 — Check your current user
+
+```bash
+whoami
+```
+
+## Step 2 — Check user IDs and groups
+
+```bash
+id
+```
+
+## Step 3 — Check sudo privileges
+
+```bash
+sudo -l
+```
+
+## Step 4 — Perform a harmless sudo command
+
+For example:
+
+```bash
+sudo whoami
+```
+
+Expected output:
+
+```text
+root
+```
+
+This demonstrates that the command was executed with elevated privileges.
+
+## Step 5 — Search sudo logs
+
+On Ubuntu/Debian:
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+## Step 6 — Search commands executed using sudo
+
+```bash
+sudo grep "COMMAND=" /var/log/auth.log
+```
+
+## Step 7 — Search for authentication failures
+
+```bash
+sudo grep -i "authentication failure" /var/log/auth.log
+```
+
+## Step 8 — Search journal logs
+
+```bash
+sudo journalctl -g sudo
+```
+
+## Step 9 — Monitor authentication activity
+
+```bash
+sudo tail -f /var/log/auth.log
+```
+
+---
+
+# 📊 16. Important Fields to Investigate
+
+When analyzing a `sudo` event, look for:
+
+| Field                | What it tells you               |
+| -------------------- | ------------------------------- |
+| Timestamp            | When the event occurred         |
+| Username             | Who executed the command        |
+| TTY                  | Terminal/session used           |
+| PWD                  | Working directory               |
+| USER                 | Account the command ran as      |
+| COMMAND              | Command executed                |
+| Source/login context | How the user reached the system |
+
+These fields help establish the context of the activity.
+
+---
+
+# 🚨 17. Suspicious sudo Indicators
+
+Some activity may deserve additional investigation:
+
+```text
+Repeated sudo authentication failures
+        ↓
+Unexpected user using sudo
+        ↓
+Unusual administrative command
+        ↓
+Sudo activity immediately after unknown SSH login
+        ↓
+Unexpected command executed as root
+```
+
+Examples of commands that may deserve context-based investigation:
+
+```text
+useradd
+usermod
+passwd
+chmod
+chown
+systemctl
+iptables
+```
+
+These commands can be legitimate administrative tools, so their presence alone does not indicate malicious activity.
+
+---
+
+# 🛡️ 18. Defensive Measures
+
+Organizations can reduce privilege-related risks by using:
+
+* Least privilege
+* Strong authentication
+* Limited `sudo` permissions
+* Regular review of privileged accounts
+* SSH key authentication
+* MFA where supported
+* Monitoring administrative commands
+* Removing unnecessary administrative access
+* Keeping systems patched
+* Centralized log collection
+
+---
+
+# 🎯 19. Interview Questions
+
+### Q1. What is `sudo`?
+
+`sudo` allows an authorized user to execute a command with elevated privileges.
+
+### Q2. What is root?
+
+Root is the Linux superuser account with extensive administrative privileges.
+
+### Q3. What is privilege escalation?
+
+Privilege escalation occurs when a user or process gains privileges beyond what it is normally authorized to have.
+
+### Q4. How do you check your sudo permissions?
+
+```bash
+sudo -l
+```
+
+### Q5. How can you search for sudo activity in Ubuntu authentication logs?
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+### Q6. How can you find commands executed through sudo?
+
+```bash
+sudo grep "COMMAND=" /var/log/auth.log
+```
+
+### Q7. Why should SOC analysts monitor sudo activity?
+
+Because unexpected privileged commands can provide indicators of account compromise, privilege escalation, or unauthorized administrative activity.
+
+### Q8. Does every sudo command indicate an attack?
+
+No. `sudo` is routinely used for legitimate administrative tasks. Analysts need to consider the user, command, time, login source, and surrounding activity.
+
+---
+
+# 🔐 20. SOC Investigation Workflow
+
+```text
+SSH Authentication
+        ↓
+Identify User
+        ↓
+Check Login Source
+        ↓
+Check sudo Activity
+        ↓
+Identify Privileged Command
+        ↓
+Check Process Activity
+        ↓
+Check File Changes
+        ↓
+Check Network Connections
+        ↓
+Determine Whether Activity Is Expected
+```
+
+---
+
+# 📸 21. GitHub Screenshots
+
+Recommended structure:
+
+```text
+Day-15/
+│
+├── README.md
+│
+└── screenshots/
+    ├── user-id.png
+    ├── sudo-permissions.png
+    ├── sudo-command.png
+    ├── sudo-log-analysis.png
+    ├── journalctl-sudo.png
+    └── sudo-monitoring.png
+```
+
+### Screenshot commands
+
+**User information:**
+
+```bash
+id
+```
+
+**Sudo permissions:**
+
+```bash
+sudo -l
+```
+
+**Sudo activity:**
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+**Commands executed with sudo:**
+
+```bash
+sudo grep "COMMAND=" /var/log/auth.log
+```
+
+**Journal analysis:**
+
+```bash
+sudo journalctl -g sudo
+```
+
+---
+
+# ⚠️ Security Reminder
+
+Before uploading screenshots to GitHub, hide:
+
+* Passwords
+* SSH private keys
+* API tokens
+* Public IP addresses
+* Sensitive usernames
+* Company information
+* Internal server information
+
+Never upload:
+
+```text
+/etc/shadow
+```
+
+or private SSH keys to GitHub.
+
+---
+
+# 📝 Day 15 Key Learning
+
+Today I learned how Linux manages administrative privileges using `sudo` and how privilege-related activity can be monitored through authentication logs and the systemd journal.
+
+I practiced:
+
+```text
+whoami
+id
+sudo -l
+sudo
+grep
+journalctl
+tail
+```
+
+I also learned how SOC analysts can correlate SSH authentication with `sudo` activity to investigate potentially suspicious administrative actions.
+
+---
+
+# ✅ Day 15 Completion Checklist
+
+* [ ] Understand Linux privileges
+* [ ] Understand root
+* [ ] Understand sudo
+* [ ] Check sudo permissions
+* [ ] Understand privilege escalation
+* [ ] Find sudo activity in logs
+* [ ] Find privileged commands
+* [ ] Use grep for analysis
+* [ ] Use journalctl for analysis
+* [ ] Monitor sudo activity
+* [ ] Correlate SSH + sudo activity
+* [ ] Complete SOC investigation
+* [ ] Capture screenshots
+* [ ] Upload README to GitHub
+
+---
+
+## 🚀 Progress
+
+**Day 15 / 180 completed**
+
+**Skill gained:** Linux Privilege & `sudo` Activity Monitoring
+
+### Next → Day 16
+
+**Linux Persistence & Cron Jobs Monitoring**
