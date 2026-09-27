@@ -1,0 +1,748 @@
+# 🔎 Day 16 — Linux Process + Network Correlation
+
+## 🎯 Objective
+
+Learn how to correlate running Linux processes with network connections.
+
+Today I learned how to identify:
+
+* Running processes
+* Process IDs (PID)
+* Network connections
+* Listening ports
+* Remote IP addresses
+* Source and destination ports
+* Which process owns a network connection
+* Suspicious process + network activity
+
+---
+
+# 1. What is Process + Network Correlation?
+
+**Process + network correlation** means connecting a running process to the network activity it generates.
+
+For example:
+
+```text
+Process
+  ↓
+PID
+  ↓
+Network Socket
+  ↓
+Local IP:Port
+  ↓
+Remote IP:Port
+```
+
+Example:
+
+```text
+firefox
+   ↓
+PID 2451
+   ↓
+TCP connection
+   ↓
+192.168.1.20:51542
+   ↓
+93.184.216.34:443
+```
+
+This tells an analyst which process is communicating over the network.
+
+---
+
+# 2. Why Is This Important for SOC Analysts?
+
+Suppose you find an unusual network connection:
+
+```text
+192.168.1.20:49152 → 203.0.113.50:4444
+```
+
+The connection itself doesn't tell you which application created it.
+
+A SOC analyst can investigate:
+
+```text
+Remote IP
+    ↓
+Network connection
+    ↓
+PID
+    ↓
+Process
+    ↓
+User
+    ↓
+Executable
+```
+
+This helps determine whether the connection is expected or requires further investigation.
+
+---
+
+# 3. View Running Processes
+
+Use:
+
+```bash
+ps aux
+```
+
+Important fields include:
+
+```text
+USER
+PID
+%CPU
+%MEM
+STAT
+COMMAND
+```
+
+Example:
+
+```text
+USER      PID   %CPU   %MEM   COMMAND
+user     2451    2.1    1.5   firefox
+```
+
+Here:
+
+```text
+PID = 2451
+Process = firefox
+```
+
+---
+
+# 4. Monitor Processes with top
+
+Run:
+
+```bash
+top
+```
+
+Important fields:
+
+```text
+PID
+USER
+%CPU
+%MEM
+S
+COMMAND
+```
+
+You can use the PID to investigate a process further.
+
+Exit:
+
+```text
+q
+```
+
+---
+
+# 5. View Network Connections with ss
+
+The `ss` command displays network sockets.
+
+Basic command:
+
+```bash
+ss -tuln
+```
+
+For process information:
+
+```bash
+sudo ss -tulpn
+```
+
+Options:
+
+```text
+t → TCP
+u → UDP
+l → Listening
+p → Process information
+n → Numeric output
+```
+
+---
+
+# 6. Understanding Network Connections
+
+Example:
+
+```text
+ESTAB  0  0  192.168.1.20:51542  93.184.216.34:443
+```
+
+This can be interpreted as:
+
+```text
+Local IP       → 192.168.1.20
+Local Port     → 51542
+Remote IP      → 93.184.216.34
+Remote Port    → 443
+State          → ESTAB
+```
+
+Port `443` is commonly associated with HTTPS.
+
+---
+
+# 7. Listening vs Established Connections
+
+### Listening
+
+A process is waiting for incoming connections.
+
+Example:
+
+```text
+LISTEN  0  128  0.0.0.0:22
+```
+
+This indicates that something is listening on TCP port 22.
+
+### Established
+
+An active connection exists between two endpoints.
+
+Example:
+
+```text
+ESTAB  0  0  192.168.1.20:51542  93.184.216.34:443
+```
+
+---
+
+# 8. Find Which Process Owns a Port
+
+Use:
+
+```bash
+sudo ss -tulpn
+```
+
+Example:
+
+```text
+LISTEN 0 128 0.0.0.0:22
+users:(("sshd",pid=812,fd=3))
+```
+
+Here:
+
+```text
+Process → sshd
+PID     → 812
+Port    → 22
+```
+
+This is the basic process-to-network correlation.
+
+---
+
+# 9. Investigate a PID
+
+Suppose you find:
+
+```text
+PID = 812
+```
+
+Get process details:
+
+```bash
+ps -p 812 -f
+```
+
+You can also inspect the executable:
+
+```bash
+sudo readlink -f /proc/812/exe
+```
+
+Check the parent process:
+
+```bash
+ps -o pid,ppid,user,cmd -p 812
+```
+
+---
+
+# 10. Use lsof for Network Connections
+
+`lsof` can show which processes have files and network sockets open.
+
+Check network connections:
+
+```bash
+sudo lsof -i
+```
+
+Show TCP connections:
+
+```bash
+sudo lsof -iTCP
+```
+
+Show listening network sockets:
+
+```bash
+sudo lsof -i -P -n
+```
+
+Example:
+
+```text
+COMMAND   PID   USER   FD   TYPE   DEVICE   NODE NAME
+ssh       812   root    3u  IPv4   ...      TCP *:22 (LISTEN)
+```
+
+This connects:
+
+```text
+Process → PID → User → Network socket → Port
+```
+
+---
+
+# 11. Investigate a Specific PID with lsof
+
+If you have a suspicious PID:
+
+```bash
+sudo lsof -p 812
+```
+
+To focus on network activity:
+
+```bash
+sudo lsof -Pan -p 812 -i
+```
+
+This can show the network connections associated with that process.
+
+---
+
+# 12. Process + Network Investigation Workflow
+
+A basic SOC workflow:
+
+```text
+Suspicious Network Connection
+          ↓
+Identify Local Port
+          ↓
+Identify PID
+          ↓
+Identify Process
+          ↓
+Identify User
+          ↓
+Find Executable
+          ↓
+Check Parent Process
+          ↓
+Investigate Remote IP
+          ↓
+Review Logs
+```
+
+---
+
+# 🔍 13. Mini SOC Investigation
+
+Imagine you find this connection:
+
+```text
+ESTAB
+192.168.1.20:49152
+→
+203.0.113.50:4444
+```
+
+Your first question should be:
+
+> Which process created this connection?
+
+Run:
+
+```bash
+sudo ss -tupn
+```
+
+Suppose you discover:
+
+```text
+users:(("python3",pid=2451,fd=3))
+```
+
+Now you know:
+
+```text
+Process → python3
+PID     → 2451
+Remote  → 203.0.113.50:4444
+```
+
+Investigate the process:
+
+```bash
+ps -p 2451 -f
+```
+
+Find the executable:
+
+```bash
+sudo readlink -f /proc/2451/exe
+```
+
+Check the parent:
+
+```bash
+ps -o pid,ppid,user,cmd -p 2451
+```
+
+Check all network connections for that PID:
+
+```bash
+sudo lsof -Pan -p 2451 -i
+```
+
+### Investigation questions
+
+1. What process created the connection?
+2. Which user owns the process?
+3. Where is the executable located?
+4. What is the parent process?
+5. Is the remote IP expected?
+6. Is the remote port expected?
+7. Was the process intentionally started?
+8. Are there related logs?
+
+---
+
+# 14. Important SOC Principle
+
+An unusual connection does **not automatically mean malware**.
+
+For example:
+
+```text
+python3 → Internet
+```
+
+could be:
+
+* A legitimate application
+* A development script
+* An automation tool
+* A monitoring script
+* A security tool
+* Malware
+
+You need additional evidence before reaching a conclusion.
+
+---
+
+# 15. Practical Lab
+
+## Step 1 — View running processes
+
+```bash
+ps aux
+```
+
+## Step 2 — Monitor processes
+
+```bash
+top
+```
+
+## Step 3 — View listening ports
+
+```bash
+sudo ss -tulpn
+```
+
+## Step 4 — View active TCP connections
+
+```bash
+sudo ss -tpn
+```
+
+## Step 5 — View all network connections with processes
+
+```bash
+sudo lsof -i -P -n
+```
+
+## Step 6 — Pick a PID
+
+From `ss` or `lsof`, identify a process PID.
+
+Example:
+
+```text
+PID = 812
+```
+
+## Step 7 — Investigate the process
+
+```bash
+ps -p 812 -f
+```
+
+## Step 8 — Find executable
+
+```bash
+sudo readlink -f /proc/812/exe
+```
+
+## Step 9 — Check parent process
+
+```bash
+ps -o pid,ppid,user,cmd -p 812
+```
+
+## Step 10 — Check network activity for the PID
+
+```bash
+sudo lsof -Pan -p 812 -i
+```
+
+---
+
+# 📊 16. Important Commands
+
+| Command                          | Purpose                              |
+| -------------------------------- | ------------------------------------ |
+| `ps aux`                         | View running processes               |
+| `top`                            | Real-time process monitoring         |
+| `ss -tulpn`                      | View listening sockets and processes |
+| `ss -tpn`                        | View TCP connections and processes   |
+| `lsof -i`                        | View network connections             |
+| `ps -p PID -f`                   | Investigate a specific process       |
+| `readlink -f /proc/PID/exe`      | Find process executable              |
+| `ps -o pid,ppid,user,cmd -p PID` | View process hierarchy/details       |
+| `lsof -Pan -p PID -i`            | View network connections for a PID   |
+
+---
+
+# 🎯 17. Interview Questions
+
+### Q1. What is process-network correlation?
+
+It is the process of connecting network activity to the process that created or owns the network socket.
+
+### Q2. Which command can show processes associated with network sockets?
+
+```bash
+sudo ss -tulpn
+```
+
+### Q3. How do you investigate a PID?
+
+```bash
+ps -p <PID> -f
+```
+
+### Q4. How do you find the executable associated with a PID?
+
+```bash
+sudo readlink -f /proc/<PID>/exe
+```
+
+### Q5. What does `lsof -i` show?
+
+It can show processes that have network sockets open.
+
+### Q6. What is the difference between LISTEN and ESTAB?
+
+**LISTEN** means a service is waiting for incoming connections.
+
+**ESTAB** means an active connection has been established.
+
+### Q7. Does an unknown network connection automatically mean malware?
+
+No. The process, user, destination, timing, application purpose, and other evidence must be investigated.
+
+---
+
+# 🔐 18. Cybersecurity Relevance
+
+Process-network correlation is useful for detecting:
+
+* Unexpected network connections
+* Suspicious processes
+* Unauthorized services
+* Malware communication
+* Unusual outbound connections
+* Suspicious listening ports
+* Compromised applications
+
+A SOC analyst may combine:
+
+```text
+Process Data
+     +
+Network Data
+     +
+Authentication Logs
+     +
+System Logs
+     ↓
+Security Investigation
+```
+
+This is called **event correlation**.
+
+---
+
+# 📸 19. GitHub Upload Structure
+
+```text
+Day-16/
+│
+├── README.md
+│
+└── screenshots/
+    ├── ps-processes.png
+    ├── top-process-monitoring.png
+    ├── ss-network-connections.png
+    ├── process-network-correlation.png
+    ├── lsof-network.png
+    └── pid-investigation.png
+```
+
+### Recommended screenshots
+
+**1. Process list**
+
+```bash
+ps aux
+```
+
+**2. Real-time monitoring**
+
+```bash
+top
+```
+
+**3. Network + process information**
+
+```bash
+sudo ss -tulpn
+```
+
+**4. Network connections**
+
+```bash
+sudo ss -tpn
+```
+
+**5. Network processes**
+
+```bash
+sudo lsof -i -P -n
+```
+
+**6. PID investigation**
+
+```bash
+ps -p <PID> -f
+```
+
+---
+
+# ⚠️ Security Reminder
+
+Before uploading screenshots to GitHub, hide sensitive information such as:
+
+* Public IP addresses
+* Internal company IP addresses
+* Usernames
+* Hostnames
+* VPN information
+* API tokens
+* Passwords
+* Private SSH keys
+
+Never upload private keys or credentials to GitHub.
+
+---
+
+# 📝 Day 16 Key Learning
+
+Today I learned how to correlate Linux processes with network activity.
+
+I practiced:
+
+```text
+ps
+top
+ss
+lsof
+/proc
+```
+
+I learned how to:
+
+```text
+Identify a network connection
+        ↓
+Find its PID
+        ↓
+Identify the process
+        ↓
+Identify the user
+        ↓
+Find the executable
+        ↓
+Check the parent process
+        ↓
+Investigate the network connection
+```
+
+This gives me a practical foundation for investigating suspicious processes and network activity as a SOC analyst.
+
+---
+
+# ✅ Day 16 Completion Checklist
+
+* [ ] Understand process-network correlation
+* [ ] Practice `ps`
+* [ ] Practice `top`
+* [ ] Practice `ss`
+* [ ] Practice `lsof`
+* [ ] Identify listening ports
+* [ ] Identify established connections
+* [ ] Find PID from network activity
+* [ ] Investigate a process
+* [ ] Find process executable
+* [ ] Check parent process
+* [ ] Correlate process + network activity
+* [ ] Complete SOC investigation
+* [ ] Capture screenshots
+* [ ] Upload README to GitHub
+
+---
+
+## 🚀 Progress
+
+**Day 16 / 180 completed**
+
+**Skill gained:** Linux Process + Network Correlation
+
+### Next → Day 17
+
+**Linux Persistence Monitoring — Cron Jobs, Systemd Services & Startup Activity**
