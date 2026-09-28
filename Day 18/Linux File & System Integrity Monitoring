@@ -1,0 +1,1035 @@
+# 🔐 Day 18 — Linux File & System Integrity Monitoring
+
+## 🎯 Objective
+
+Learn how to monitor important Linux files and directories for unexpected changes.
+
+Today I learned:
+
+* File integrity monitoring
+* Linux file permissions
+* File ownership
+* Important system directories
+* File hashes
+* File modification times
+* Detecting unexpected file changes
+* Monitoring `/etc`
+* Monitoring suspicious permissions
+* Basic SOC investigation of file changes
+
+---
+
+# 1. What is File Integrity Monitoring?
+
+**File Integrity Monitoring (FIM)** is the process of detecting changes to important files and directories.
+
+A change can include:
+
+* File creation
+* File modification
+* File deletion
+* Permission changes
+* Ownership changes
+* File hash changes
+
+Example:
+
+```text
+Important File
+      ↓
+Create Baseline
+      ↓
+Monitor Changes
+      ↓
+Change Detected
+      ↓
+Investigate
+```
+
+---
+
+# 2. Why is File Integrity Monitoring Important?
+
+Attackers may modify important system files after gaining access.
+
+For example:
+
+```text
+Attacker gains access
+        ↓
+Modifies configuration
+        ↓
+Changes permissions
+        ↓
+Creates persistence
+        ↓
+System behavior changes
+```
+
+FIM can help identify unexpected changes.
+
+However:
+
+> A file change does not automatically mean an attack. Software updates and normal administration also modify system files.
+
+---
+
+# 3. Important Linux Directories
+
+Some directories are particularly useful during security investigations.
+
+### `/etc`
+
+Contains system configuration files.
+
+Examples:
+
+```text
+/etc/passwd
+/etc/group
+/etc/ssh/
+/etc/systemd/
+```
+
+Unexpected changes in `/etc` can be important because configuration changes may affect authentication, services, or system behavior.
+
+---
+
+### `/var/log`
+
+Contains many system and application logs.
+
+```bash
+ls -lah /var/log/
+```
+
+---
+
+### `/usr/bin`
+
+Contains many executable programs.
+
+```bash
+ls -lah /usr/bin/ | head
+```
+
+---
+
+### `/tmp`
+
+Used for temporary files.
+
+```bash
+ls -lah /tmp/
+```
+
+Unexpected executable files or scripts in temporary locations may deserve investigation.
+
+---
+
+# 4. Why `/etc` Can Be Important
+
+The `/etc` directory contains configuration files used by many Linux services.
+
+Examples:
+
+```text
+/etc/passwd
+/etc/group
+/etc/ssh/
+/etc/systemd/
+/etc/cron.d/
+```
+
+A change to one of these files may affect:
+
+* Users
+* Groups
+* Authentication
+* SSH
+* Services
+* Scheduled tasks
+* System configuration
+
+Therefore, monitoring important files under `/etc` can be useful for security investigations.
+
+---
+
+# 5. File Permissions
+
+Linux permissions determine who can:
+
+* Read
+* Write
+* Execute
+
+Example:
+
+```text
+-rwxr-xr-x
+```
+
+The permissions are divided into:
+
+```text
+Owner | Group | Others
+```
+
+Example:
+
+```text
+rwx | r-x | r-x
+```
+
+Meaning:
+
+```text
+Owner  → read + write + execute
+Group  → read + execute
+Others → read + execute
+```
+
+---
+
+# 6. Check File Permissions
+
+Use:
+
+```bash
+ls -l /etc/passwd
+```
+
+Example:
+
+```text
+-rw-r--r-- 1 root root ... /etc/passwd
+```
+
+Important information:
+
+```text
+Permissions
+Owner
+Group
+File
+```
+
+---
+
+# 7. Check File Ownership
+
+Use:
+
+```bash
+ls -l /etc/passwd
+```
+
+Or:
+
+```bash
+stat /etc/passwd
+```
+
+Example:
+
+```text
+Owner → root
+Group → root
+```
+
+Unexpected ownership changes can be worth investigating.
+
+---
+
+# 8. Using stat
+
+`stat` provides detailed file metadata.
+
+Example:
+
+```bash
+stat /etc/passwd
+```
+
+Important information includes:
+
+```text
+File
+Size
+Permissions
+UID
+GID
+Access time
+Modify time
+Change time
+```
+
+This is useful during file investigations.
+
+---
+
+# 9. File Modification Time
+
+Find the modification time:
+
+```bash
+stat /etc/passwd
+```
+
+Look for:
+
+```text
+Modify:
+```
+
+If a sensitive file was modified at an unusual time, investigate:
+
+```text
+Who changed it?
+Why was it changed?
+Was a package updated?
+Was an administrator working?
+```
+
+---
+
+# 10. File Hashes
+
+A hash creates a digital fingerprint of a file.
+
+For example:
+
+```bash
+sha256sum file.txt
+```
+
+Example:
+
+```text
+abc123...  file.txt
+```
+
+If the file changes, its SHA-256 hash normally changes.
+
+---
+
+# 11. Creating a File Integrity Baseline
+
+Suppose we want to monitor:
+
+```text
+/etc/passwd
+```
+
+Create a baseline:
+
+```bash
+sha256sum /etc/passwd
+```
+
+Save the output:
+
+```bash
+sha256sum /etc/passwd > passwd.hash
+```
+
+View it:
+
+```bash
+cat passwd.hash
+```
+
+Later, calculate the hash again:
+
+```bash
+sha256sum /etc/passwd
+```
+
+Compare the result with the baseline.
+
+---
+
+# 12. Hash Comparison
+
+Example baseline:
+
+```text
+HASH_A
+```
+
+Current hash:
+
+```text
+HASH_A
+```
+
+Result:
+
+```text
+No content change detected
+```
+
+If the current hash becomes:
+
+```text
+HASH_B
+```
+
+then:
+
+```text
+Hash changed
+      ↓
+File content may have changed
+      ↓
+Investigate
+```
+
+A hash change does not by itself prove malicious activity.
+
+---
+
+# 13. Checking File Changes with ls
+
+View files with timestamps:
+
+```bash
+ls -lah /etc/
+```
+
+For a specific file:
+
+```bash
+ls -l /etc/passwd
+```
+
+Sort by modification time:
+
+```bash
+ls -lt /etc/
+```
+
+This can help identify recently modified files.
+
+---
+
+# 14. Finding Recently Modified Files
+
+You can use `find`.
+
+Example:
+
+```bash
+sudo find /etc -type f -mtime -1
+```
+
+This searches for files under `/etc` modified within approximately the last day.
+
+Another example:
+
+```bash
+sudo find /etc -type f -mmin -60
+```
+
+This searches for files modified within approximately the last hour.
+
+---
+
+# 15. Monitoring Important System Files
+
+Examples of files that may be relevant during security investigations:
+
+```text
+/etc/passwd
+/etc/group
+/etc/ssh/
+/etc/sudoers
+/etc/crontab
+/etc/systemd/
+```
+
+Do **not** modify these files just for practice.
+
+Instead, practice viewing and monitoring them.
+
+---
+
+# 16. Monitor `/etc/passwd`
+
+Check its metadata:
+
+```bash
+stat /etc/passwd
+```
+
+Check its hash:
+
+```bash
+sha256sum /etc/passwd
+```
+
+Check permissions:
+
+```bash
+ls -l /etc/passwd
+```
+
+---
+
+# 17. Monitor `/etc/group`
+
+```bash
+stat /etc/group
+```
+
+Hash:
+
+```bash
+sha256sum /etc/group
+```
+
+Permissions:
+
+```bash
+ls -l /etc/group
+```
+
+---
+
+# 18. Monitor SSH Configuration
+
+List SSH configuration files:
+
+```bash
+ls -lah /etc/ssh/
+```
+
+Check the main SSH configuration:
+
+```bash
+ls -l /etc/ssh/sshd_config
+```
+
+Check metadata:
+
+```bash
+stat /etc/ssh/sshd_config
+```
+
+Calculate hash:
+
+```bash
+sha256sum /etc/ssh/sshd_config
+```
+
+Changes to SSH configuration can affect remote access and authentication behavior.
+
+---
+
+# 19. Monitor Cron Configuration
+
+Check:
+
+```bash
+stat /etc/crontab
+```
+
+Hash:
+
+```bash
+sha256sum /etc/crontab
+```
+
+List cron configuration:
+
+```bash
+ls -lah /etc/cron.d/
+```
+
+This connects Day 18 with **Day 17 persistence monitoring**.
+
+---
+
+# 20. Suspicious Permissions
+
+Some permission configurations deserve investigation.
+
+For example, an unexpected executable file:
+
+```text
+-rwxrwxrwx
+```
+
+The exact risk depends on the file, owner, location, and purpose.
+
+Look for:
+
+```text
+Unexpected executable files
+Unexpected ownership
+Unexpected writable files
+Unexpected permission changes
+```
+
+Do not assume that every unusual permission is malicious.
+
+---
+
+# 21. Find World-Writable Files
+
+A file writable by everyone may deserve review depending on its location and purpose.
+
+Example:
+
+```bash
+sudo find /etc -type f -perm -0002 -ls
+```
+
+This searches for files under `/etc` that are writable by others.
+
+Investigate any result carefully before changing permissions.
+
+---
+
+# 22. Find SUID Files
+
+SUID allows an executable to run with the privileges of its file owner.
+
+Find SUID files:
+
+```bash
+sudo find / -type f -perm -4000 2>/dev/null
+```
+
+SUID programs can be legitimate system components.
+
+During a security investigation, an **unexpected newly introduced SUID executable** can be important.
+
+Do not modify or delete SUID files unless you understand their purpose.
+
+---
+
+# 🔍 23. Mini SOC Investigation
+
+Suppose you discover:
+
+```text
+/etc/cron.d/update
+```
+
+First inspect it:
+
+```bash
+ls -l /etc/cron.d/update
+```
+
+Check metadata:
+
+```bash
+stat /etc/cron.d/update
+```
+
+Read it:
+
+```bash
+cat /etc/cron.d/update
+```
+
+Calculate its hash:
+
+```bash
+sha256sum /etc/cron.d/update
+```
+
+Then ask:
+
+```text
+Who created it?
+When was it created?
+What command does it execute?
+Which user executes it?
+Is the task expected?
+Does the command launch a script?
+Does the script make network connections?
+```
+
+Now correlate with previous lessons:
+
+```text
+Cron Job
+   ↓
+Script
+   ↓
+Process
+   ↓
+Network Connection
+```
+
+---
+
+# 🧪 24. Practical Lab
+
+## Step 1 — Check important files
+
+```bash
+ls -l /etc/passwd
+ls -l /etc/group
+```
+
+## Step 2 — Check metadata
+
+```bash
+stat /etc/passwd
+```
+
+## Step 3 — Calculate SHA-256
+
+```bash
+sha256sum /etc/passwd
+```
+
+## Step 4 — Create a baseline
+
+```bash
+sha256sum /etc/passwd > passwd.hash
+```
+
+## Step 5 — View the baseline
+
+```bash
+cat passwd.hash
+```
+
+## Step 6 — Calculate the hash again
+
+```bash
+sha256sum /etc/passwd
+```
+
+## Step 7 — Check recently modified `/etc` files
+
+```bash
+sudo find /etc -type f -mtime -1
+```
+
+## Step 8 — Check SSH configuration
+
+```bash
+stat /etc/ssh/sshd_config
+```
+
+## Step 9 — Check cron configuration
+
+```bash
+stat /etc/crontab
+```
+
+## Step 10 — Search for world-writable files
+
+```bash
+sudo find /etc -type f -perm -0002 -ls
+```
+
+---
+
+# 📊 25. Important Commands
+
+| Command                | Purpose                              |
+| ---------------------- | ------------------------------------ |
+| `ls -l`                | View permissions and ownership       |
+| `ls -lt`               | Sort by modification time            |
+| `stat`                 | View detailed file metadata          |
+| `sha256sum`            | Calculate SHA-256 hash               |
+| `find`                 | Search for files                     |
+| `file`                 | Identify file type                   |
+| `cat`                  | View file contents                   |
+| `diff`                 | Compare text files                   |
+| `sudo find ... -mtime` | Find recently modified files         |
+| `sudo find ... -perm`  | Find files with specific permissions |
+
+---
+
+# 🎯 26. Interview Questions
+
+### Q1. What is File Integrity Monitoring?
+
+FIM is the process of detecting changes to important files and directories.
+
+### Q2. Why is `/etc` important?
+
+`/etc` contains many system configuration files related to authentication, services, networking, users, and system behavior.
+
+### Q3. What does `sha256sum` do?
+
+It calculates a SHA-256 cryptographic hash of a file.
+
+### Q4. Why are file hashes useful?
+
+They can help determine whether a file's contents have changed by comparing its current hash with a trusted baseline.
+
+### Q5. How do you check file permissions?
+
+```bash
+ls -l <file>
+```
+
+### Q6. How do you check detailed file metadata?
+
+```bash
+stat <file>
+```
+
+### Q7. How do you find recently modified files?
+
+Example:
+
+```bash
+sudo find /etc -type f -mtime -1
+```
+
+### Q8. Does a hash change automatically mean malware?
+
+No. Legitimate software updates, configuration changes, and administration can also change a file.
+
+### Q9. Why should unexpected SUID files be investigated?
+
+SUID programs can execute with the privileges of their owner. An unexpected SUID executable may therefore have security significance.
+
+---
+
+# 🔗 27. SOC Investigation Workflow
+
+```text
+File Change Detected
+        ↓
+Identify File
+        ↓
+Check Owner
+        ↓
+Check Permissions
+        ↓
+Check Modification Time
+        ↓
+Calculate / Compare Hash
+        ↓
+Identify Related Process
+        ↓
+Check Persistence Mechanisms
+        ↓
+Check Network Activity
+        ↓
+Review Logs
+        ↓
+Determine Whether Change Is Expected
+```
+
+---
+
+# 🔥 28. Correlation with Previous Days
+
+### Day 14
+
+SSH authentication monitoring:
+
+```text
+SSH Login
+   ↓
+User Authentication
+```
+
+### Day 15
+
+Privilege monitoring:
+
+```text
+User
+ ↓
+sudo
+ ↓
+Root-level command
+```
+
+### Day 16
+
+Process + network correlation:
+
+```text
+Process
+ ↓
+Network Connection
+```
+
+### Day 17
+
+Persistence monitoring:
+
+```text
+Cron / systemd
+ ↓
+Process
+```
+
+### Day 18
+
+File integrity monitoring:
+
+```text
+File Change
+ ↓
+Process / User
+ ↓
+Persistence?
+ ↓
+Network Activity?
+```
+
+This allows you to build a stronger SOC investigation by correlating multiple sources of evidence.
+
+---
+
+# 📸 29. GitHub Upload Structure
+
+```text
+Day-18/
+│
+├── README.md
+│
+└── screenshots/
+    ├── file-permissions.png
+    ├── file-metadata.png
+    ├── sha256-baseline.png
+    ├── modified-files.png
+    ├── ssh-config-monitoring.png
+    └── integrity-investigation.png
+```
+
+### Recommended screenshots
+
+**1. File permissions**
+
+```bash
+ls -l /etc/passwd
+```
+
+**2. File metadata**
+
+```bash
+stat /etc/passwd
+```
+
+**3. SHA-256 baseline**
+
+```bash
+sha256sum /etc/passwd
+```
+
+**4. Recently modified files**
+
+```bash
+sudo find /etc -type f -mtime -1
+```
+
+**5. SSH configuration**
+
+```bash
+stat /etc/ssh/sshd_config
+```
+
+**6. Cron configuration**
+
+```bash
+stat /etc/crontab
+```
+
+---
+
+# ⚠️ Security Reminder
+
+Never upload sensitive system information to GitHub.
+
+Do not upload:
+
+```text
+/etc/shadow
+SSH private keys
+Passwords
+API tokens
+Cloud credentials
+VPN credentials
+Sensitive company configuration
+```
+
+Screenshots should be reviewed and redacted before publishing.
+
+---
+
+# 📝 Day 18 Key Learning
+
+Today I learned how to monitor Linux files and system integrity using:
+
+```text
+ls
+stat
+sha256sum
+find
+file
+```
+
+I practiced checking:
+
+```text
+File permissions
+File ownership
+File timestamps
+File hashes
+Recently modified files
+SSH configuration
+Cron configuration
+SUID files
+```
+
+I also learned how unexpected file changes can be correlated with:
+
+```text
+Users
+Processes
+Persistence
+Network connections
+Logs
+```
+
+This provides a foundation for **File Integrity Monitoring (FIM)** and SOC investigations.
+
+---
+
+# ✅ Day 18 Completion Checklist
+
+* [ ] Understand File Integrity Monitoring
+* [ ] Understand important Linux directories
+* [ ] Check file permissions
+* [ ] Check file ownership
+* [ ] Use `stat`
+* [ ] Use `sha256sum`
+* [ ] Create a file hash baseline
+* [ ] Find recently modified files
+* [ ] Monitor `/etc`
+* [ ] Check SSH configuration
+* [ ] Check cron configuration
+* [ ] Understand SUID
+* [ ] Investigate unexpected changes
+* [ ] Correlate file changes with processes
+* [ ] Complete SOC investigation
+* [ ] Capture screenshots
+* [ ] Upload README to GitHub
+
+---
+
+## 🚀 Progress
+
+**Day 18 / 180 completed**
+
+**Skill gained:** Linux File & System Integrity Monitoring
+
+### Next → Day 19
+
+**Linux Account & Authentication Security Monitoring**
