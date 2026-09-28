@@ -1,0 +1,911 @@
+# 🔐 Day 17 — Linux Persistence & Startup Activity Monitoring
+
+## 🎯 Objective
+
+Learn how Linux programs and services can be configured to start automatically and how SOC analysts can monitor these mechanisms for suspicious persistence.
+
+### Today I learned:
+
+* What persistence means
+* Linux startup activity
+* Systemd services
+* Cron jobs
+* User crontab
+* System-wide cron
+* Startup services
+* Enabling and disabling services
+* Investigating suspicious persistence
+* Basic SOC persistence monitoring
+
+---
+
+# 1. What is Persistence?
+
+**Persistence** is a technique that allows a program, service, or process to continue running or start automatically after a reboot, login, or scheduled time.
+
+Example:
+
+```text
+Attacker gains access
+        ↓
+Creates persistence mechanism
+        ↓
+System reboots
+        ↓
+Malicious program starts again
+```
+
+Persistence can also be completely legitimate.
+
+Examples include:
+
+* Web servers
+* Monitoring agents
+* Backup services
+* Security software
+* Scheduled maintenance tasks
+
+Therefore, finding a startup item does **not automatically mean it is malicious**.
+
+---
+
+# 2. Why SOC Analysts Monitor Persistence
+
+Attackers may attempt to maintain access to a compromised system.
+
+A SOC analyst may investigate:
+
+```text
+Unexpected service
+Unexpected cron job
+Unknown startup process
+New scheduled task
+Recently modified service
+Unknown executable
+Unexpected script
+```
+
+The investigation should determine:
+
+```text
+Who created it?
+When was it created?
+What does it execute?
+Who owns it?
+Is it expected?
+```
+
+---
+
+# 3. Systemd
+
+Modern Linux distributions commonly use **systemd** to manage services and system startup.
+
+Check whether systemd is running:
+
+```bash
+systemctl is-system-running
+```
+
+List active services:
+
+```bash
+systemctl list-units --type=service --state=running
+```
+
+---
+
+# 4. List Installed Services
+
+Use:
+
+```bash
+systemctl list-unit-files --type=service
+```
+
+This displays service unit files and their enabled/disabled state.
+
+Example:
+
+```text
+SERVICE                 STATE
+ssh.service             enabled
+cron.service            enabled
+some-service.service    disabled
+```
+
+---
+
+# 5. Check Enabled Services
+
+Services configured to start automatically can be viewed with:
+
+```bash
+systemctl list-unit-files --type=service --state=enabled
+```
+
+This is useful when investigating startup persistence.
+
+---
+
+# 6. Check a Specific Service
+
+For example, SSH:
+
+```bash
+systemctl status ssh
+```
+
+Some systems may use:
+
+```bash
+systemctl status sshd
+```
+
+The status can provide information such as:
+
+* Service state
+* PID
+* Start time
+* Main process
+* Recent logs
+
+---
+
+# 7. Check Whether a Service Starts Automatically
+
+Use:
+
+```bash
+systemctl is-enabled ssh
+```
+
+Possible output:
+
+```text
+enabled
+```
+
+This means the service is configured to start automatically according to its systemd configuration.
+
+---
+
+# 8. Start and Stop Services
+
+Start a service:
+
+```bash
+sudo systemctl start <service>
+```
+
+Stop a service:
+
+```bash
+sudo systemctl stop <service>
+```
+
+Restart a service:
+
+```bash
+sudo systemctl restart <service>
+```
+
+⚠️ Only perform service changes on your own lab system. Do not stop production or security-critical services without authorization.
+
+---
+
+# 9. Enable and Disable Services
+
+Enable automatic startup:
+
+```bash
+sudo systemctl enable <service>
+```
+
+Disable automatic startup:
+
+```bash
+sudo systemctl disable <service>
+```
+
+For this challenge, focus mainly on **identifying and investigating** services rather than modifying them.
+
+---
+
+# 10. Investigating a Suspicious Service
+
+Suppose you find:
+
+```text
+suspicious.service
+```
+
+Check its status:
+
+```bash
+systemctl status suspicious.service
+```
+
+Check whether it is enabled:
+
+```bash
+systemctl is-enabled suspicious.service
+```
+
+View its configuration:
+
+```bash
+systemctl cat suspicious.service
+```
+
+This can reveal what command or executable the service starts.
+
+---
+
+# 11. View Service Logs
+
+Use:
+
+```bash
+journalctl -u <service>
+```
+
+Example:
+
+```bash
+journalctl -u ssh
+```
+
+View recent entries:
+
+```bash
+journalctl -u <service> -n 30
+```
+
+Follow logs:
+
+```bash
+journalctl -u <service> -f
+```
+
+---
+
+# 12. What is Cron?
+
+**Cron** is a Linux scheduling system used to automatically execute commands or scripts at specified times.
+
+Examples of legitimate cron tasks:
+
+```text
+Daily backup
+Log cleanup
+System maintenance
+Report generation
+Scheduled scripts
+```
+
+Cron can also be abused for persistence.
+
+---
+
+# 13. View Current User's Cron Jobs
+
+Run:
+
+```bash
+crontab -l
+```
+
+If no jobs exist, you may see:
+
+```text
+no crontab for user
+```
+
+Do not assume this is a problem.
+
+---
+
+# 14. View Root's Cron Jobs
+
+If you have authorized administrative access:
+
+```bash
+sudo crontab -l
+```
+
+This shows the root user's scheduled cron jobs.
+
+---
+
+# 15. System-Wide Cron Locations
+
+Common locations include:
+
+```text
+/etc/crontab
+/etc/cron.d/
+/etc/cron.hourly/
+/etc/cron.daily/
+/etc/cron.weekly/
+/etc/cron.monthly/
+```
+
+Inspect them:
+
+```bash
+cat /etc/crontab
+```
+
+List cron directories:
+
+```bash
+ls -lah /etc/cron.d/
+```
+
+```bash
+ls -lah /etc/cron.daily/
+```
+
+---
+
+# 16. Understanding a Cron Entry
+
+Example:
+
+```text
+0 2 * * * /home/user/backup.sh
+```
+
+The basic structure is:
+
+```text
+Minute
+Hour
+Day of Month
+Month
+Day of Week
+Command
+```
+
+So:
+
+```text
+0 2 * * *
+```
+
+means the command is scheduled for **02:00 every day**.
+
+---
+
+# 17. Cron Persistence Investigation
+
+Suppose you find:
+
+```text
+*/5 * * * * /tmp/update.sh
+```
+
+The command is scheduled to execute every five minutes.
+
+An analyst should investigate:
+
+```text
+Who created it?
+        ↓
+What does update.sh do?
+        ↓
+Who owns the script?
+        ↓
+When was it created?
+        ↓
+Is it a legitimate task?
+        ↓
+Does it connect to the network?
+```
+
+Do not immediately label it malicious just because the location or schedule looks unusual.
+
+---
+
+# 18. Investigate a Script
+
+If you find a scheduled script:
+
+```bash
+ls -l /tmp/update.sh
+```
+
+Check the file:
+
+```bash
+file /tmp/update.sh
+```
+
+Read its contents:
+
+```bash
+cat /tmp/update.sh
+```
+
+Check permissions:
+
+```bash
+ls -lah /tmp/update.sh
+```
+
+Check modification time:
+
+```bash
+stat /tmp/update.sh
+```
+
+---
+
+# 19. Startup Activity Investigation
+
+A useful investigation combines several sources:
+
+```text
+Systemd Services
+       +
+Cron Jobs
+       +
+Running Processes
+       +
+Network Connections
+       +
+Authentication Logs
+```
+
+Example:
+
+```text
+Unknown Service
+      ↓
+Starts automatically
+      ↓
+Launches unusual process
+      ↓
+Process makes outbound connection
+      ↓
+Investigate
+```
+
+This is stronger evidence than looking at a startup entry alone.
+
+---
+
+# 🔍 20. Mini SOC Investigation
+
+Imagine you discover:
+
+```text
+backup-check.service
+```
+
+First:
+
+```bash
+systemctl status backup-check.service
+```
+
+Then:
+
+```bash
+systemctl is-enabled backup-check.service
+```
+
+View its configuration:
+
+```bash
+systemctl cat backup-check.service
+```
+
+Suppose you discover:
+
+```text
+ExecStart=/opt/scripts/check.sh
+```
+
+Investigate:
+
+```bash
+ls -lah /opt/scripts/check.sh
+```
+
+Then:
+
+```bash
+file /opt/scripts/check.sh
+```
+
+And:
+
+```bash
+stat /opt/scripts/check.sh
+```
+
+Read the script:
+
+```bash
+cat /opt/scripts/check.sh
+```
+
+Check whether it creates network connections:
+
+```bash
+sudo ss -tpn
+```
+
+Then identify the process:
+
+```bash
+ps aux
+```
+
+---
+
+# 🧪 21. Practical Lab
+
+## Step 1 — List running services
+
+```bash
+systemctl list-units --type=service --state=running
+```
+
+## Step 2 — List enabled services
+
+```bash
+systemctl list-unit-files --type=service --state=enabled
+```
+
+## Step 3 — Check SSH service
+
+```bash
+systemctl status ssh
+```
+
+If required:
+
+```bash
+systemctl status sshd
+```
+
+## Step 4 — Check whether SSH starts automatically
+
+```bash
+systemctl is-enabled ssh
+```
+
+## Step 5 — View current user's cron jobs
+
+```bash
+crontab -l
+```
+
+## Step 6 — View root cron jobs
+
+```bash
+sudo crontab -l
+```
+
+## Step 7 — Inspect system cron
+
+```bash
+cat /etc/crontab
+```
+
+## Step 8 — List cron.d
+
+```bash
+ls -lah /etc/cron.d/
+```
+
+## Step 9 — Investigate a service
+
+Choose a legitimate service from your system:
+
+```bash
+systemctl status <service>
+```
+
+Then:
+
+```bash
+systemctl cat <service>
+```
+
+## Step 10 — Check its logs
+
+```bash
+journalctl -u <service> -n 30
+```
+
+---
+
+# 📊 22. Important Commands
+
+| Command                     | Purpose                        |
+| --------------------------- | ------------------------------ |
+| `systemctl status`          | Check service status           |
+| `systemctl is-enabled`      | Check automatic startup        |
+| `systemctl list-units`      | List active units              |
+| `systemctl list-unit-files` | List installed unit files      |
+| `systemctl cat`             | View service configuration     |
+| `journalctl -u`             | View service logs              |
+| `crontab -l`                | View user's cron jobs          |
+| `sudo crontab -l`           | View root cron jobs            |
+| `cat /etc/crontab`          | View system cron configuration |
+| `ls /etc/cron.d/`           | View system cron jobs          |
+| `stat`                      | View file metadata             |
+| `file`                      | Identify file type             |
+| `ps aux`                    | View processes                 |
+| `ss -tpn`                   | View network connections       |
+
+---
+
+# 🚨 23. Possible Persistence Indicators
+
+During an investigation, pay attention to:
+
+```text
+Unknown systemd service
+        ↓
+Unexpected enabled service
+        ↓
+Unknown executable
+        ↓
+Recently created startup file
+        ↓
+Unexpected cron job
+        ↓
+Script running as root
+        ↓
+Process making unexpected network connections
+```
+
+These are **investigation indicators**, not automatic proof of malicious activity.
+
+---
+
+# 🔗 24. Correlating Day 16 + Day 17
+
+Day 16 taught:
+
+```text
+Process ↔ Network
+```
+
+Day 17 adds:
+
+```text
+Persistence ↔ Process ↔ Network
+```
+
+Example:
+
+```text
+Cron Job
+   ↓
+Script
+   ↓
+Process
+   ↓
+Network Connection
+   ↓
+Remote IP
+```
+
+This type of correlation can help a SOC analyst understand how a process started and what it does afterward.
+
+---
+
+# 🎯 25. Interview Questions
+
+### Q1. What is persistence?
+
+Persistence is a mechanism that allows software or an attacker to maintain or regain execution/access after events such as reboot or logout.
+
+### Q2. What is systemd?
+
+Systemd is a system and service manager commonly used by modern Linux distributions.
+
+### Q3. How do you list running services?
+
+```bash
+systemctl list-units --type=service --state=running
+```
+
+### Q4. How do you check if a service starts automatically?
+
+```bash
+systemctl is-enabled <service>
+```
+
+### Q5. What is cron?
+
+Cron is a Linux scheduling mechanism used to automatically execute commands or scripts at specified times.
+
+### Q6. How do you view the current user's cron jobs?
+
+```bash
+crontab -l
+```
+
+### Q7. Where can system-wide cron jobs be found?
+
+Common locations include:
+
+```text
+/etc/crontab
+/etc/cron.d/
+/etc/cron.hourly/
+/etc/cron.daily/
+/etc/cron.weekly/
+/etc/cron.monthly/
+```
+
+### Q8. Is every cron job suspicious?
+
+No. Cron is widely used for legitimate system administration and automation. The task, owner, command, timing, and context should be investigated.
+
+---
+
+# 🛡️ 26. SOC Investigation Workflow
+
+```text
+Find Unexpected Startup Activity
+              ↓
+Identify Persistence Mechanism
+              ↓
+Identify Owner
+              ↓
+Identify Command / Script
+              ↓
+Check Creation / Modification Time
+              ↓
+Identify Process
+              ↓
+Check Network Connections
+              ↓
+Review Logs
+              ↓
+Determine Whether Activity Is Expected
+```
+
+---
+
+# 📸 27. GitHub Upload Structure
+
+```text
+Day-17/
+│
+├── README.md
+│
+└── screenshots/
+    ├── running-services.png
+    ├── enabled-services.png
+    ├── service-status.png
+    ├── service-config.png
+    ├── cron-jobs.png
+    └── persistence-investigation.png
+```
+
+### Recommended screenshots
+
+**1. Running services**
+
+```bash
+systemctl list-units --type=service --state=running
+```
+
+**2. Enabled services**
+
+```bash
+systemctl list-unit-files --type=service --state=enabled
+```
+
+**3. Service investigation**
+
+```bash
+systemctl status ssh
+```
+
+**4. Service configuration**
+
+```bash
+systemctl cat ssh
+```
+
+**5. Cron investigation**
+
+```bash
+crontab -l
+```
+
+and:
+
+```bash
+cat /etc/crontab
+```
+
+---
+
+# ⚠️ Security Reminder
+
+Before uploading screenshots to GitHub, hide:
+
+* Public IP addresses
+* Usernames if sensitive
+* Hostnames
+* Company information
+* Internal paths containing sensitive information
+* Passwords
+* API tokens
+* SSH private keys
+
+Never upload credentials or private keys to GitHub.
+
+---
+
+# 📝 Day 17 Key Learning
+
+Today I learned how Linux persistence and startup mechanisms work.
+
+I practiced:
+
+```text
+systemctl
+journalctl
+crontab
+ps
+ss
+stat
+file
+```
+
+I learned how to investigate:
+
+```text
+Systemd services
+Cron jobs
+Startup activity
+Scheduled scripts
+Processes
+Network connections
+```
+
+I also learned that persistence mechanisms can be legitimate or suspicious, so SOC analysts must investigate the **owner, command, timing, process, network activity, and surrounding logs** before making a determination.
+
+---
+
+# ✅ Day 17 Completion Checklist
+
+* [ ] Understand Linux persistence
+* [ ] Understand systemd
+* [ ] List running services
+* [ ] List enabled services
+* [ ] Check service status
+* [ ] Inspect service configuration
+* [ ] Understand cron
+* [ ] Check user cron jobs
+* [ ] Check system cron
+* [ ] Investigate a startup mechanism
+* [ ] Correlate persistence with processes
+* [ ] Correlate processes with network activity
+* [ ] Complete SOC investigation
+* [ ] Capture screenshots
+* [ ] Upload README to GitHub
+
+---
+
+## 🚀 Progress
+
+**Day 17 / 180 completed**
+
+**Skill gained:** Linux Persistence & Startup Activity Monitoring
+
+### Next → Day 18
+
+**Linux File & Directory Monitoring — Permissions, Ownership & Suspicious File Activity**
