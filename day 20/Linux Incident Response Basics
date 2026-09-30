@@ -1,0 +1,681 @@
+# Day 20 — Linux Incident Response Basics 🚨
+
+## 🎯 Objective
+
+Today I learned the fundamentals of **Linux Incident Response**.
+
+The focus was on:
+
+* Evidence collection
+* Evidence preservation
+* Authentication investigation
+* Process investigation
+* Network investigation
+* File investigation
+* Incident timeline creation
+* Identifying Indicators of Compromise (IOCs)
+* Writing a basic SOC investigation report
+
+---
+
+# 1. What is Incident Response?
+
+**Incident Response (IR)** is the process of detecting, investigating, containing, and recovering from a security incident.
+
+A simplified SOC workflow:
+
+```text
+Alert
+  ↓
+Triage
+  ↓
+Evidence Collection
+  ↓
+Investigation
+  ↓
+Timeline Creation
+  ↓
+Containment
+  ↓
+Recovery
+  ↓
+Lessons Learned
+```
+
+Today I focused mainly on:
+
+```text
+Triage → Evidence Collection → Investigation → Timeline → Reporting
+```
+
+---
+
+# 2. Step 1 — Collect Basic System Information
+
+I started by recording basic information about the Linux system.
+
+```bash
+date
+hostname
+whoami
+id
+uptime
+uname -a
+```
+
+Network information:
+
+```bash
+ip addr
+ip route
+```
+
+### Information collected
+
+| Evidence      | Purpose                          |
+| ------------- | -------------------------------- |
+| Date/time     | Establish investigation timeline |
+| Hostname      | Identify the affected system     |
+| Current user  | Identify account                 |
+| UID/GID       | Understand privileges            |
+| Uptime        | Understand system activity       |
+| OS/kernel     | Identify environment             |
+| IP address    | Identify network identity        |
+| Routing table | Understand network path          |
+
+---
+
+# 3. Step 2 — Investigate Logged-in Users
+
+I checked currently logged-in users:
+
+```bash
+who
+```
+
+```bash
+w
+```
+
+Login history:
+
+```bash
+last
+```
+
+I looked for:
+
+* Unexpected users
+* Unexpected login times
+* Remote sessions
+* Suspicious source IP addresses
+* Unusual login activity
+
+A login from an unfamiliar IP should be **investigated**, not automatically considered malicious.
+
+---
+
+# 4. Step 3 — Investigate Authentication Logs
+
+On Ubuntu/Debian systems:
+
+```bash
+sudo tail -n 50 /var/log/auth.log
+```
+
+Search for authentication events:
+
+```bash
+sudo grep -E "Failed|Accepted|Invalid user" /var/log/auth.log
+```
+
+SSH logs can also be reviewed using:
+
+```bash
+sudo journalctl -u ssh --since today
+```
+
+Important events include:
+
+```text
+Failed password
+Invalid user
+Accepted password
+Accepted publickey
+```
+
+### SOC investigation question
+
+```text
+Were multiple failed login attempts followed by a successful login?
+```
+
+This connects with my Day 14 SSH authentication monitoring work.
+
+---
+
+# 5. Step 4 — Process Investigation
+
+I listed running processes:
+
+```bash
+ps aux
+```
+
+Processes using high CPU:
+
+```bash
+ps aux --sort=-%cpu | head
+```
+
+Processes using high memory:
+
+```bash
+ps aux --sort=-%mem | head
+```
+
+Detailed process information:
+
+```bash
+ps -ef
+```
+
+For a specific process:
+
+```bash
+ps -fp <PID>
+```
+
+Example:
+
+```bash
+ps -fp 2451
+```
+
+I investigated:
+
+```text
+PID
+PPID
+User
+Command
+CPU usage
+Memory usage
+Start time
+```
+
+---
+
+# 6. Step 5 — Network Evidence Collection
+
+I checked active network connections:
+
+```bash
+sudo ss -tunap
+```
+
+Listening services:
+
+```bash
+sudo ss -lntup
+```
+
+To investigate a particular process:
+
+```bash
+sudo ss -tunap | grep <PID>
+```
+
+The goal was to correlate:
+
+```text
+Process
+   ↓
+PID
+   ↓
+Local IP:Port
+   ↓
+Remote IP:Port
+```
+
+This connects with my Day 16 process and network correlation work.
+
+---
+
+# 7. Step 6 — File Investigation
+
+I checked the `/tmp` directory:
+
+```bash
+ls -lah /tmp
+```
+
+Recently modified files:
+
+```bash
+find /tmp -type f -mtime -1 -ls
+```
+
+Executable files:
+
+```bash
+find /tmp -type f -perm /111 -ls
+```
+
+For a suspicious file:
+
+```bash
+stat suspicious-file
+```
+
+I calculated its SHA-256 hash:
+
+```bash
+sha256sum suspicious-file
+```
+
+### Important investigation questions
+
+```text
+Who owns the file?
+When was it created or modified?
+What permissions does it have?
+Is it executable?
+Which process is using it?
+Does it have a network connection?
+Was it created after a suspicious login?
+```
+
+A suspicious file is **not automatically malware**. It requires investigation and context.
+
+---
+
+# 8. Step 7 — Preserve Evidence
+
+I created an investigation directory:
+
+```bash
+mkdir -p ~/day20-ir/{system,logs,network,process,files}
+```
+
+Collected system information:
+
+```bash
+date > ~/day20-ir/system/date.txt
+hostname > ~/day20-ir/system/hostname.txt
+id > ~/day20-ir/system/id.txt
+uptime > ~/day20-ir/system/uptime.txt
+```
+
+Collected process information:
+
+```bash
+ps aux > ~/day20-ir/process/processes.txt
+```
+
+Collected network connections:
+
+```bash
+sudo ss -tunap > ~/day20-ir/network/connections.txt
+```
+
+Collected logged-in users:
+
+```bash
+who > ~/day20-ir/system/who.txt
+w > ~/day20-ir/system/w.txt
+last > ~/day20-ir/system/last.txt
+```
+
+Collected SSH logs:
+
+```bash
+sudo journalctl -u ssh --since today > ~/day20-ir/logs/ssh.log
+```
+
+On Ubuntu/Debian systems:
+
+```bash
+sudo cp /var/log/auth.log ~/day20-ir/logs/auth.log
+```
+
+### Why preserve evidence?
+
+Evidence should be collected carefully so that the original information is not unnecessarily modified or destroyed.
+
+I should **not immediately delete or modify a suspicious file** during an investigation.
+
+---
+
+# 9. Step 8 — Hash Evidence
+
+I calculated the SHA-256 hash of collected evidence:
+
+```bash
+sha256sum ~/day20-ir/logs/auth.log
+```
+
+I can create hashes for multiple evidence files:
+
+```bash
+sha256sum ~/day20-ir/logs/* > ~/day20-ir/evidence-hashes.txt
+```
+
+Hashes can help determine whether collected evidence has changed.
+
+---
+
+# 10. Step 9 — Build an Incident Timeline
+
+A timeline helps connect individual events.
+
+Example:
+
+```text
+10:01 — SSH authentication failure
+10:02 — SSH authentication failure
+10:03 — Successful SSH login
+10:05 — sudo command executed
+10:07 — New process started
+10:08 — Process created network connection
+10:10 — File modified
+```
+
+Timeline table:
+
+| Time  | Event              | Evidence            |
+| ----- | ------------------ | ------------------- |
+| 10:01 | SSH failure        | auth.log            |
+| 10:02 | SSH failure        | auth.log            |
+| 10:03 | SSH success        | auth.log            |
+| 10:05 | sudo activity      | sudo logs           |
+| 10:07 | New process        | process information |
+| 10:08 | Network connection | `ss`                |
+| 10:10 | File modification  | `stat` / hash       |
+
+### SOC mindset
+
+Don't investigate every event separately.
+
+Correlate:
+
+```text
+Authentication
+      ↓
+Privilege
+      ↓
+Process
+      ↓
+Network
+      ↓
+File
+      ↓
+Timeline
+```
+
+---
+
+# 11. Incident Investigation Scenario
+
+### Scenario
+
+A Linux server generates an alert for unexpected activity.
+
+Investigation shows:
+
+```text
+09:55 — Failed SSH login from 192.168.1.50
+09:56 — Failed SSH login from 192.168.1.50
+09:57 — Successful SSH login from 192.168.1.50
+10:00 — sudo command executed
+10:02 — New process started
+10:03 — Process established an outbound connection
+10:05 — File in /tmp was modified
+```
+
+### Investigation questions
+
+**1. Who logged in?**
+
+```bash
+last
+```
+
+**2. Were there failed authentication attempts?**
+
+```bash
+sudo grep -E "Failed|Accepted" /var/log/auth.log
+```
+
+**3. What privileged commands were executed?**
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+**4. What processes were running?**
+
+```bash
+ps aux
+```
+
+**5. Which process had network connections?**
+
+```bash
+sudo ss -tunap
+```
+
+**6. Were files recently created or modified?**
+
+```bash
+find /tmp -type f -mtime -1 -ls
+```
+
+**7. Can these events be connected into a timeline?**
+
+This is the main objective of today's investigation.
+
+---
+
+# 12. Indicators of Interest
+
+During an investigation, I can record potential indicators such as:
+
+```text
+Source IP
+Username
+PID
+Process name
+Executable path
+Destination IP
+Destination port
+Filename
+File hash
+Timestamp
+```
+
+These can become **Indicators of Compromise (IOCs)** when supported by evidence.
+
+---
+
+# 13. SOC Investigation Report
+
+A basic report can contain:
+
+```text
+Incident ID:
+Date:
+Host:
+Analyst:
+
+Alert:
+Unexpected Linux activity detected.
+
+Initial Observation:
+
+Evidence Collected:
+
+Authentication Activity:
+
+Privilege Activity:
+
+Process Activity:
+
+Network Activity:
+
+File Activity:
+
+Timeline:
+
+Indicators of Interest:
+
+Investigation Findings:
+
+Actions Taken:
+
+Next Steps:
+```
+
+### Example finding
+
+Instead of immediately writing:
+
+```text
+The server was hacked.
+```
+
+A better evidence-based statement is:
+
+```text
+Multiple failed SSH authentication attempts were followed by a
+successful login from the same source IP. Subsequent privileged
+activity, process activity, network activity, and file modification
+were identified and require further investigation.
+```
+
+The conclusion should be based on the available evidence.
+
+---
+
+# 14. Day 20 Detection Workflow
+
+```text
+Multiple authentication failures
+              ↓
+Successful login
+              ↓
+Privileged activity
+              ↓
+Unexpected process
+              ↓
+Network connection
+              ↓
+File modification
+              ↓
+Correlate events
+              ↓
+Collect evidence
+              ↓
+Build timeline
+              ↓
+Identify IOCs
+              ↓
+Write SOC report
+```
+
+---
+
+# 15. GitHub Structure
+
+```text
+180-days-cybersecurity-challenge/
+│
+├── Day-18/
+├── Day-19/
+│
+└── Day-20/
+    ├── README.md
+    └── screenshots/
+        ├── system-information.png
+        ├── user-logins.png
+        ├── authentication-logs.png
+        ├── process-evidence.png
+        ├── network-connections.png
+        ├── file-investigation.png
+        ├── evidence-hashes.png
+        ├── incident-timeline.png
+        └── soc-investigation-report.png
+```
+
+---
+
+# 📸 Screenshots to Capture
+
+Take screenshots of:
+
+1. System information
+2. Logged-in users
+3. Authentication logs
+4. Process investigation
+5. Network connections
+6. `/tmp` file investigation
+7. SHA-256 evidence hashes
+8. Incident timeline
+9. Final SOC investigation report
+
+---
+
+# 🧠 Interview Questions
+
+1. What is Incident Response?
+2. What is evidence preservation?
+3. Why are authentication logs important?
+4. What information can you obtain from a PID?
+5. How do you correlate a process with a network connection?
+6. What is an IOC?
+7. Why is an incident timeline important?
+8. Why shouldn't you immediately delete a suspicious file?
+9. What is the purpose of SHA-256 hashing during evidence handling?
+10. How would you investigate a successful SSH login following multiple failed attempts?
+
+---
+
+# ✅ Day 20 Checklist
+
+* [ ] Understand incident response
+* [ ] Collect system information
+* [ ] Check logged-in users
+* [ ] Analyze authentication logs
+* [ ] Investigate processes
+* [ ] Investigate network connections
+* [ ] Investigate suspicious files
+* [ ] Preserve investigation evidence
+* [ ] Calculate SHA-256 hashes
+* [ ] Build an incident timeline
+* [ ] Identify potential IOCs
+* [ ] Write a SOC investigation report
+* [ ] Upload screenshots to GitHub
+
+---
+
+## 🔥 Day 20 Skill
+
+**Linux Incident Response → Evidence Collection → Correlation → Timeline → SOC Reporting**
+
+### What I learned
+
+```text
+Detect
+  ↓
+Collect
+  ↓
+Preserve
+  ↓
+Correlate
+  ↓
+Investigate
+  ↓
+Document
+```
+
+This completes the transition from basic Linux monitoring into **practical SOC incident investigation**.
