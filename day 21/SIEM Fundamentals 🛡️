@@ -1,0 +1,785 @@
+# Day 21 — SIEM Fundamentals 🛡️
+
+## 🎯 Objective
+
+Today I learned the fundamentals of **Security Information and Event Management (SIEM)**.
+
+Topics covered:
+
+* What is SIEM?
+* Logs vs events vs alerts
+* Log sources
+* Log collection
+* Normalization
+* Correlation
+* Detection rules
+* Security alerts
+* Basic SOC investigation workflow
+* Creating a simple SIEM-style investigation using Linux logs
+
+---
+
+# 1. What is SIEM?
+
+**SIEM** stands for:
+
+> Security Information and Event Management
+
+A SIEM collects security-related data from different systems and helps security teams:
+
+* Monitor activity
+* Search logs
+* Detect suspicious behavior
+* Correlate events
+* Generate alerts
+* Investigate incidents
+* Create reports
+
+Examples of SIEM platforms include:
+
+* Wazuh
+* Splunk
+* Microsoft Sentinel
+* IBM QRadar
+* Elastic Security
+
+---
+
+# 2. Why Do SOC Analysts Use SIEM?
+
+Imagine a company has:
+
+```text
+100 Linux Servers
+500 Windows Computers
+50 Network Devices
+20 Firewalls
+10 Applications
+```
+
+Each system generates logs.
+
+Manually checking every machine would be difficult.
+
+A SIEM can collect the logs centrally:
+
+```text
+Linux ───────┐
+Windows ─────┤
+Firewall ────┤
+Router ──────┼──→ SIEM ──→ Detection ──→ Alert
+Web Server ──┤
+Cloud ───────┘
+```
+
+The SOC analyst investigates the resulting alerts.
+
+---
+
+# 3. Log vs Event vs Alert
+
+These three terms are important.
+
+## Log
+
+A **log** is a recorded activity.
+
+Example:
+
+```text
+Failed password for user admin from 192.168.1.50
+```
+
+## Event
+
+An **event** is a specific occurrence extracted from logs.
+
+Example:
+
+```text
+Event:
+User: admin
+Source IP: 192.168.1.50
+Action: Failed SSH login
+```
+
+## Alert
+
+An **alert** is generated when an event or group of events matches a detection condition.
+
+Example:
+
+```text
+5 failed SSH logins
+from the same IP
+within 2 minutes
+```
+
+→ **Generate alert**
+
+---
+
+# 4. SIEM Data Flow
+
+A simplified SIEM architecture:
+
+```text
+Data Sources
+     ↓
+Log Collection
+     ↓
+Parsing
+     ↓
+Normalization
+     ↓
+Storage
+     ↓
+Correlation / Detection
+     ↓
+Alert
+     ↓
+SOC Analyst
+     ↓
+Investigation
+```
+
+---
+
+# 5. Common SIEM Log Sources
+
+A SIEM can collect logs from many sources.
+
+### Endpoint
+
+```text
+Windows
+Linux
+macOS
+```
+
+### Network
+
+```text
+Firewall
+Router
+IDS/IPS
+VPN
+Proxy
+DNS
+DHCP
+```
+
+### Applications
+
+```text
+Web servers
+Databases
+Authentication systems
+Applications
+```
+
+### Cloud
+
+```text
+AWS
+Azure
+Google Cloud
+```
+
+---
+
+# 6. Linux as a SIEM Data Source
+
+You've already worked with Linux logs.
+
+For example:
+
+```bash
+sudo tail -n 50 /var/log/auth.log
+```
+
+SSH events:
+
+```bash
+sudo journalctl -u ssh --since today
+```
+
+System logs:
+
+```bash
+sudo journalctl --since today
+```
+
+These logs could be forwarded to a SIEM.
+
+The SIEM would then allow analysts to search and correlate them centrally.
+
+---
+
+# 7. Understanding a Security Event
+
+Consider:
+
+```text
+Failed password for admin from 192.168.1.50
+```
+
+A SIEM may extract fields such as:
+
+| Field      | Value                  |
+| ---------- | ---------------------- |
+| Event type | Authentication failure |
+| Username   | admin                  |
+| Source IP  | 192.168.1.50           |
+| Protocol   | SSH                    |
+| Service    | sshd                   |
+| Host       | Linux server           |
+| Timestamp  | Event time             |
+
+This process is called **parsing**.
+
+---
+
+# 8. What is Normalization?
+
+Different systems may record the same type of event differently.
+
+For example:
+
+```text
+Linux:
+Failed password for admin
+
+Windows:
+An account failed to log on
+
+Firewall:
+Authentication failure
+```
+
+A SIEM can normalize these into a common concept:
+
+```text
+Event Category:
+Authentication Failure
+```
+
+This makes correlation easier.
+
+---
+
+# 9. What is Correlation?
+
+Correlation means connecting multiple events together.
+
+Example:
+
+```text
+Event 1:
+5 failed SSH logins
+
+        ↓
+
+Event 2:
+Successful SSH login
+
+        ↓
+
+Event 3:
+sudo command
+
+        ↓
+
+Event 4:
+New process
+
+        ↓
+
+Event 5:
+Outbound network connection
+```
+
+Individually, these events may not generate a high-priority alert.
+
+Together, they provide stronger investigation context.
+
+---
+
+# 10. Basic Detection Rule
+
+A simple detection rule:
+
+```text
+IF
+
+5 or more SSH authentication failures
+
+FROM
+
+the same source IP
+
+WITHIN
+
+5 minutes
+
+THEN
+
+generate an alert.
+```
+
+Example:
+
+```text
+192.168.1.50
+     ↓
+Failed
+Failed
+Failed
+Failed
+Failed
+     ↓
+SSH Brute-Force Alert
+```
+
+This is a **detection**, not proof that an account was compromised.
+
+---
+
+# 11. Practical Lab — Create a Fake SIEM Dataset
+
+Create a lab directory:
+
+```bash
+mkdir -p ~/day21-siem
+cd ~/day21-siem
+```
+
+Create a sample security log:
+
+```bash
+nano security-events.log
+```
+
+Add:
+
+```text
+Oct 02 10:01:01 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:05 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:10 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:15 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:20 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:02:01 server sshd: Accepted password for admin from 192.168.1.50
+Oct 02 10:04:12 server sudo: admin : COMMAND=/usr/bin/systemctl status ssh
+Oct 02 10:06:30 server kernel: suspicious process started
+Oct 02 10:07:15 server network: outbound connection from 192.168.1.10 to 203.0.113.50:443
+```
+
+Save the file.
+
+---
+
+# 12. Search the Events
+
+Search failed authentication:
+
+```bash
+grep "Failed password" security-events.log
+```
+
+Count them:
+
+```bash
+grep -c "Failed password" security-events.log
+```
+
+Search successful authentication:
+
+```bash
+grep "Accepted" security-events.log
+```
+
+Search privileged activity:
+
+```bash
+grep "sudo" security-events.log
+```
+
+Search network activity:
+
+```bash
+grep "outbound" security-events.log
+```
+
+---
+
+# 13. Extract Source IP Addresses
+
+Try:
+
+```bash
+grep "Failed password" security-events.log | awk '{print $(NF-3)}'
+```
+
+Then:
+
+```bash
+grep "Failed password" security-events.log | awk '{print $(NF-3)}' | sort | uniq -c
+```
+
+Expected concept:
+
+```text
+5 192.168.1.50
+```
+
+This tells us that the same source IP generated five authentication failures in the sample data.
+
+> Log formats differ between systems, so `awk` field positions must always be verified against the actual log format.
+
+---
+
+# 14. Create a Simple Detection
+
+Use:
+
+```bash
+grep "Failed password" security-events.log | awk '{print $(NF-3)}' | sort | uniq -c
+```
+
+If the count is greater than or equal to 5:
+
+```text
+Potential SSH brute-force activity detected.
+```
+
+Detection logic:
+
+```text
+IF
+failed SSH attempts >= 5
+
+AND
+
+same source IP
+
+THEN
+
+generate investigation alert.
+```
+
+---
+
+# 15. Correlate the Events
+
+Now investigate the complete sample.
+
+You found:
+
+```text
+10:01 — Failed SSH login
+10:01 — Failed SSH login
+10:01 — Failed SSH login
+10:01 — Failed SSH login
+10:01 — Failed SSH login
+10:02 — Successful SSH login
+10:04 — sudo command
+10:06 — New process
+10:07 — Outbound connection
+```
+
+Build the investigation chain:
+
+```text
+SSH Failures
+      ↓
+Successful Login
+      ↓
+Privilege Activity
+      ↓
+Process Activity
+      ↓
+Network Activity
+```
+
+This is where SIEM becomes powerful: **correlation provides context**.
+
+---
+
+# 16. Alert vs Incident
+
+These terms should not be confused.
+
+### Alert
+
+A detection system reports something that requires investigation.
+
+Example:
+
+```text
+Possible SSH brute-force activity
+```
+
+### Incident
+
+An alert that, after investigation, is determined to represent a security incident requiring response.
+
+Therefore:
+
+```text
+Alert ≠ Automatically an Incident
+```
+
+A SOC analyst investigates the alert first.
+
+---
+
+# 17. Basic SOC Workflow
+
+```text
+SIEM Alert
+    ↓
+Validate Alert
+    ↓
+Collect Evidence
+    ↓
+Check User
+    ↓
+Check Source IP
+    ↓
+Check Process
+    ↓
+Check Network
+    ↓
+Check File Activity
+    ↓
+Build Timeline
+    ↓
+Determine Findings
+    ↓
+Document
+```
+
+This connects directly with your **Day 20 Incident Response** work.
+
+---
+
+# 18. Day 21 Investigation Challenge 🕵️
+
+Use this scenario:
+
+```text
+Alert:
+Possible SSH brute-force activity
+```
+
+Evidence:
+
+```text
+10:01 — 192.168.1.50 failed SSH login
+10:01 — 192.168.1.50 failed SSH login
+10:01 — 192.168.1.50 failed SSH login
+10:01 — 192.168.1.50 failed SSH login
+10:01 — 192.168.1.50 failed SSH login
+10:02 — 192.168.1.50 successful SSH login
+10:04 — admin executed sudo command
+10:06 — new process started
+10:07 — outbound connection established
+```
+
+### Your tasks
+
+#### Task 1
+
+Identify the source IP.
+
+```text
+Answer:
+192.168.1.50
+```
+
+#### Task 2
+
+Count authentication failures.
+
+```text
+Answer:
+5
+```
+
+#### Task 3
+
+Was there a successful login after the failures?
+
+```text
+Answer:
+Yes
+```
+
+#### Task 4
+
+Was privileged activity observed?
+
+```text
+Answer:
+Yes — sudo activity
+```
+
+#### Task 5
+
+Was network activity observed?
+
+```text
+Answer:
+Yes — outbound connection
+```
+
+#### Task 6
+
+Create the timeline.
+
+```text
+10:01 → Authentication failures
+10:02 → Successful login
+10:04 → Privileged activity
+10:06 → Process activity
+10:07 → Network activity
+```
+
+#### Task 7
+
+Write an analyst finding.
+
+Example:
+
+```text
+Multiple SSH authentication failures from the same source IP
+were followed by a successful login. Subsequent privileged,
+process, and network activity was observed. The activity should
+be investigated further and correlated with additional host and
+network evidence.
+```
+
+---
+
+# 19. Important SIEM Concepts
+
+| Concept        | Meaning                                         |
+| -------------- | ----------------------------------------------- |
+| Log            | Recorded activity                               |
+| Event          | Individual security occurrence                  |
+| Alert          | Detection requiring investigation               |
+| SIEM           | Centralized security monitoring platform        |
+| Parsing        | Extracting useful fields from logs              |
+| Normalization  | Converting different formats into common fields |
+| Correlation    | Connecting related events                       |
+| Detection Rule | Logic used to identify suspicious activity      |
+| IOC            | Indicator associated with potential compromise  |
+| Incident       | Confirmed security event requiring response     |
+
+---
+
+# 20. GitHub Structure
+
+```text
+180-days-cybersecurity-challenge/
+│
+├── Day-19/
+│
+└── Day-20/
+│
+└── Day-21/
+    ├── README.md
+    └── screenshots/
+        ├── siem-log-source.png
+        ├── security-events.png
+        ├── failed-login-analysis.png
+        ├── source-ip-analysis.png
+        ├── detection-rule.png
+        ├── event-correlation.png
+        ├── incident-timeline.png
+        └── investigation-report.png
+```
+
+---
+
+# 📸 Screenshots to Capture
+
+Take screenshots of:
+
+1. Created `security-events.log`
+2. Failed-login search
+3. Authentication count
+4. Source-IP analysis
+5. Successful login
+6. sudo activity
+7. Network activity
+8. Event correlation
+9. Final timeline
+10. Investigation findings
+
+---
+
+# 🧠 Interview Questions
+
+1. What is SIEM?
+2. Why do organizations use SIEM?
+3. What is the difference between a log, event, and alert?
+4. What is log parsing?
+5. What is log normalization?
+6. What is event correlation?
+7. What is a detection rule?
+8. Is every SIEM alert a security incident?
+9. What are common SIEM log sources?
+10. How would you investigate multiple failed SSH logins?
+11. What information should you collect from a suspicious source IP?
+12. How does a SIEM help a SOC analyst?
+
+---
+
+# ✅ Day 21 Checklist
+
+* [ ] Understand SIEM
+* [ ] Understand logs
+* [ ] Understand events
+* [ ] Understand alerts
+* [ ] Learn SIEM data flow
+* [ ] Learn log parsing
+* [ ] Learn normalization
+* [ ] Learn correlation
+* [ ] Create a sample security dataset
+* [ ] Search authentication events
+* [ ] Count failed logins
+* [ ] Identify source IP
+* [ ] Create a detection rule
+* [ ] Correlate multiple events
+* [ ] Build an incident timeline
+* [ ] Write an analyst finding
+* [ ] Upload screenshots to GitHub
+
+---
+
+# 🔥 Day 21 Skill
+
+```text
+Linux Logs
+    ↓
+SIEM
+    ↓
+Events
+    ↓
+Detection Rules
+    ↓
+Alerts
+    ↓
+Correlation
+    ↓
+SOC Investigation
+```
+
+## What I learned
+
+I learned how a SIEM collects security events, parses and normalizes logs, correlates related activity, and generates alerts for SOC analysts to investigate.
+
+The most important concept I learned today was:
+
+> **A single event may not mean much, but correlated events can provide valuable security context.**
