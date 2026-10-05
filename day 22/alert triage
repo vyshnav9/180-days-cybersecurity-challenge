@@ -1,0 +1,780 @@
+# Day 22 — SIEM Log Analysis & Alert Triage 🔎
+
+## 🎯 Objective
+
+Today I learned how to perform basic **SIEM log analysis and alert triage**.
+
+Topics covered:
+
+* SIEM event analysis
+* Alert triage
+* Severity and priority
+* Authentication event analysis
+* Source IP analysis
+* User activity analysis
+* Event correlation
+* False positives
+* Indicators of Compromise (IOCs)
+* Writing an alert investigation summary
+
+---
+
+# 1. What is Alert Triage?
+
+**Alert triage** is the process of reviewing a security alert and deciding what should happen next.
+
+A simple workflow:
+
+```text
+SIEM Alert
+    ↓
+Validate
+    ↓
+Collect Context
+    ↓
+Analyze Events
+    ↓
+Correlate Activity
+    ↓
+Determine Priority
+    ↓
+Investigate / Escalate / Close
+```
+
+A SOC analyst should not automatically assume:
+
+```text
+Alert = Attack
+```
+
+An alert is an indication that something requires investigation.
+
+---
+
+# 2. Example SIEM Alert
+
+Imagine the SIEM generates:
+
+```text
+Alert:
+Multiple SSH Authentication Failures
+
+Source IP:
+192.168.1.50
+
+Target:
+Linux-Server-01
+
+Username:
+admin
+
+Failed Attempts:
+8
+
+Time Window:
+5 minutes
+```
+
+The first question is:
+
+> Is this expected activity or suspicious activity?
+
+---
+
+# 3. Alert Triage Questions
+
+For every alert, ask:
+
+```text
+WHO?
+WHAT?
+WHEN?
+WHERE?
+HOW?
+```
+
+### WHO?
+
+Which user/account was involved?
+
+```text
+admin
+```
+
+### WHAT?
+
+What happened?
+
+```text
+Multiple failed SSH logins
+```
+
+### WHEN?
+
+When did it happen?
+
+```text
+10:01–10:06
+```
+
+### WHERE?
+
+Where did the activity originate?
+
+```text
+192.168.1.50
+```
+
+### HOW?
+
+What protocol/service was involved?
+
+```text
+SSH
+```
+
+---
+
+# 4. Create a SIEM Investigation Dataset
+
+Create a directory:
+
+```bash
+mkdir -p ~/day22-siem
+cd ~/day22-siem
+```
+
+Create a log file:
+
+```bash
+nano auth-events.log
+```
+
+Add:
+
+```text
+Oct 02 10:01:01 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:05 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:10 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:15 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:01:20 server sshd: Failed password for admin from 192.168.1.50
+Oct 02 10:02:01 server sshd: Accepted password for admin from 192.168.1.50
+Oct 02 10:04:12 server sudo: admin : COMMAND=/usr/bin/systemctl status ssh
+Oct 02 10:06:30 server sshd: Failed password for test from 192.168.1.20
+Oct 02 10:06:35 server sshd: Failed password for test from 192.168.1.20
+Oct 02 10:07:10 server sshd: Accepted password for user1 from 192.168.1.30
+```
+
+---
+
+# 5. Analyze Authentication Failures
+
+Search for failed logins:
+
+```bash
+grep "Failed password" auth-events.log
+```
+
+Count them:
+
+```bash
+grep -c "Failed password" auth-events.log
+```
+
+Search successful logins:
+
+```bash
+grep "Accepted" auth-events.log
+```
+
+Search sudo activity:
+
+```bash
+grep "sudo" auth-events.log
+```
+
+---
+
+# 6. Analyze Source IPs
+
+Extract source IPs:
+
+```bash
+grep "Failed password" auth-events.log | awk '{print $(NF-3)}'
+```
+
+Count occurrences:
+
+```bash
+grep "Failed password" auth-events.log | awk '{print $(NF-3)}' | sort | uniq -c
+```
+
+You should see the concept:
+
+```text
+5 192.168.1.50
+2 192.168.1.20
+```
+
+This tells us that:
+
+```text
+192.168.1.50 → 5 failures
+192.168.1.20 → 2 failures
+```
+
+---
+
+# 7. Correlate Failed and Successful Logins
+
+Search:
+
+```bash
+grep -E "Failed password|Accepted" auth-events.log
+```
+
+You should notice:
+
+```text
+192.168.1.50
+    ↓
+5 failed attempts
+    ↓
+successful login
+```
+
+This is more interesting than simply seeing five failed logins.
+
+However:
+
+> A successful login after failed attempts does not automatically prove account compromise.
+
+Additional evidence is required.
+
+---
+
+# 8. Investigate Privileged Activity
+
+Search for sudo:
+
+```bash
+grep "sudo" auth-events.log
+```
+
+Example:
+
+```text
+Oct 02 10:04:12 server sudo: admin : COMMAND=/usr/bin/systemctl status ssh
+```
+
+Record:
+
+```text
+User:
+admin
+
+Command:
+systemctl status ssh
+
+Time:
+10:04:12
+```
+
+Now correlate:
+
+```text
+Failed SSH attempts
+        ↓
+Successful login
+        ↓
+sudo command
+```
+
+---
+
+# 9. What is a False Positive?
+
+A **false positive** occurs when an alert is triggered but the activity is legitimate.
+
+Example:
+
+```text
+Developer forgets their password
+        ↓
+5 failed SSH attempts
+        ↓
+Successful login
+        ↓
+SIEM generates alert
+```
+
+The alert may be valid, but the activity could be legitimate.
+
+Another example:
+
+```text
+Authorized security scanner
+        ↓
+Many authentication/network events
+        ↓
+SIEM alert
+```
+
+The SOC analyst needs context before deciding what happened.
+
+---
+
+# 10. False Positive vs True Positive
+
+### False Positive
+
+```text
+Alert
+ ↓
+Investigation
+ ↓
+Legitimate activity
+```
+
+### True Positive
+
+```text
+Alert
+ ↓
+Investigation
+ ↓
+Suspicious/malicious activity confirmed
+```
+
+The objective of triage is to determine which situation the evidence supports.
+
+---
+
+# 11. Alert Severity
+
+A SOC may categorize alerts using levels such as:
+
+```text
+Low
+Medium
+High
+Critical
+```
+
+Example:
+
+| Activity                                         | Example Priority              |
+| ------------------------------------------------ | ----------------------------- |
+| Single failed login                              | Low                           |
+| Repeated failed logins                           | Medium                        |
+| Failed logins + successful login                 | Higher investigation priority |
+| Successful login + suspicious privilege activity | Higher investigation priority |
+| Confirmed malicious activity                     | Critical                      |
+
+These levels are examples only. Actual severity depends on the organization's detection rules, assets, user context, and other evidence.
+
+---
+
+# 12. Add Context
+
+Suppose the alert says:
+
+```text
+192.168.1.50
+5 failed SSH logins
+```
+
+That alone doesn't tell us enough.
+
+Add context:
+
+```text
+Source IP:
+192.168.1.50
+
+Target:
+Production Linux server
+
+User:
+admin
+
+Time:
+10:01–10:02
+
+Failures:
+5
+
+Successful login:
+Yes
+
+sudo activity:
+Yes
+```
+
+Now the analyst has much more information.
+
+---
+
+# 13. IOC Identification
+
+During triage, record possible indicators.
+
+Example:
+
+```text
+Source IP:
+192.168.1.50
+
+Username:
+admin
+
+Target:
+Linux-Server-01
+
+Service:
+SSH
+
+Timestamp:
+10:01–10:02
+```
+
+Possible IOC categories:
+
+```text
+IP address
+Username
+Hostname
+Domain
+URL
+File hash
+Process
+Filename
+Port
+```
+
+Remember:
+
+> Not every unusual value is automatically an IOC.
+
+It becomes meaningful when supported by investigation evidence.
+
+---
+
+# 14. Day 22 Investigation Challenge 🕵️
+
+Analyze this scenario:
+
+```text
+ALERT:
+Possible SSH Brute Force
+
+Source:
+192.168.1.50
+
+Target:
+Linux-Server-01
+
+User:
+admin
+```
+
+Events:
+
+```text
+10:01:01 Failed SSH login
+10:01:05 Failed SSH login
+10:01:10 Failed SSH login
+10:01:15 Failed SSH login
+10:01:20 Failed SSH login
+10:02:01 Successful SSH login
+10:04:12 sudo command
+10:06:30 New process
+10:07:10 Outbound network connection
+```
+
+### Your task
+
+Build this investigation table:
+
+| Time  | Event            | Evidence     | Investigation |
+| ----- | ---------------- | ------------ | ------------- |
+| 10:01 | Failed login     | SSH log      | Source IP     |
+| 10:02 | Successful login | SSH log      | Account       |
+| 10:04 | sudo             | sudo log     | Command       |
+| 10:06 | Process          | Process data | PID/PPID      |
+| 10:07 | Network          | Network data | Destination   |
+
+---
+
+# 15. Determine the Investigation Priority
+
+Ask:
+
+### Question 1
+
+Were there repeated authentication failures?
+
+```text
+Yes
+```
+
+### Question 2
+
+Was there a successful login afterward?
+
+```text
+Yes
+```
+
+### Question 3
+
+Was privileged activity observed?
+
+```text
+Yes
+```
+
+### Question 4
+
+Was process activity observed?
+
+```text
+Yes
+```
+
+### Question 5
+
+Was network activity observed?
+
+```text
+Yes
+```
+
+### Question 6
+
+Should the alert be investigated further?
+
+```text
+Yes
+```
+
+The important skill is not simply detecting the alert; it is **correlating the surrounding activity**.
+
+---
+
+# 16. Write an Analyst Finding
+
+Example:
+
+```text
+Multiple SSH authentication failures from 192.168.1.50
+were observed within a short period and were followed by
+a successful login to the admin account. Subsequent sudo,
+process, and outbound network activity were also observed.
+
+The activity requires further investigation to determine
+whether the login and subsequent actions were authorized.
+```
+
+---
+
+# 17. Basic SOC Triage Template
+
+```text
+Alert ID:
+
+Alert Name:
+
+Date/Time:
+
+Source IP:
+
+Destination:
+
+Username:
+
+Host:
+
+Event Type:
+
+Initial Severity:
+
+Authentication Activity:
+
+Privilege Activity:
+
+Process Activity:
+
+Network Activity:
+
+Possible IOCs:
+
+Timeline:
+
+Investigation Findings:
+
+Recommended Next Step:
+
+Analyst:
+```
+
+---
+
+# 18. Day 22 SOC Workflow
+
+```text
+             SIEM ALERT
+                  ↓
+              Validate
+                  ↓
+          WHO / WHAT / WHEN
+                  ↓
+          Collect Context
+                  ↓
+       Correlate Related Events
+                  ↓
+       Identify Possible IOCs
+                  ↓
+         Assess Priority
+                  ↓
+       ┌──────────┴──────────┐
+       ↓                     ↓
+  False Positive       Needs Investigation
+       ↓                     ↓
+     Close                 Escalate
+```
+
+---
+
+# 19. Connection With Previous Days
+
+Your learning is now connecting together:
+
+```text
+Day 12
+Authentication Logs
+      ↓
+Day 14
+SSH Monitoring
+      ↓
+Day 16
+Process + Network Correlation
+      ↓
+Day 18
+File Integrity
+      ↓
+Day 19
+Suspicious Process Investigation
+      ↓
+Day 20
+Incident Response
+      ↓
+Day 21
+SIEM Fundamentals
+      ↓
+Day 22
+SIEM Alert Triage
+```
+
+This is becoming a practical SOC workflow rather than isolated Linux commands.
+
+---
+
+# 📁 GitHub Structure
+
+```text
+180-days-cybersecurity-challenge/
+│
+├── Day-20/
+│
+└── Day-21/
+│
+└── Day-22/
+    ├── README.md
+    └── screenshots/
+        ├── auth-events.png
+        ├── failed-login-analysis.png
+        ├── source-ip-analysis.png
+        ├── successful-login.png
+        ├── sudo-analysis.png
+        ├── event-correlation.png
+        ├── alert-triage.png
+        └── investigation-report.png
+```
+
+---
+
+# 📸 Screenshots to Capture
+
+Take screenshots of:
+
+* [ ] `auth-events.log`
+* [ ] Failed-login search
+* [ ] Failed-login count
+* [ ] Source IP analysis
+* [ ] Successful login
+* [ ] Sudo activity
+* [ ] Event correlation
+* [ ] Alert triage table
+* [ ] Final investigation summary
+
+---
+
+# 🧠 Interview Questions
+
+1. What is alert triage?
+2. What is a false positive?
+3. What is a true positive?
+4. How would you investigate an SSH brute-force alert?
+5. What information should you collect from an alert?
+6. Why is context important during alert investigation?
+7. What is an IOC?
+8. What is the difference between an alert and an incident?
+9. How do you correlate authentication and privilege events?
+10. How would you determine the priority of a security alert?
+
+---
+
+# ✅ Day 22 Checklist
+
+* [ ] Understand alert triage
+* [ ] Analyze authentication events
+* [ ] Count failed logins
+* [ ] Identify source IPs
+* [ ] Correlate failed and successful logins
+* [ ] Analyze sudo activity
+* [ ] Understand false positives
+* [ ] Identify possible IOCs
+* [ ] Add context to an alert
+* [ ] Build an investigation timeline
+* [ ] Write an analyst finding
+* [ ] Complete a SOC triage report
+* [ ] Upload screenshots to GitHub
+
+---
+
+# 🔥 Day 22 Skill
+
+```text
+SIEM
+ ↓
+Alert
+ ↓
+Triage
+ ↓
+Context
+ ↓
+Correlation
+ ↓
+IOC Identification
+ ↓
+Investigation
+ ↓
+SOC Report
+```
+
+## What I learned
+
+I learned how SOC analysts analyze SIEM alerts, collect additional context, correlate related events, identify possible IOCs, distinguish potential false positives from events requiring further investigation, and document their findings.
+
+> **An alert tells you where to look. Investigation tells you what happened.**
