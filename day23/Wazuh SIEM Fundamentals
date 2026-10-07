@@ -1,0 +1,817 @@
+# Day 23 — Wazuh SIEM Fundamentals 🛡️
+
+## 🎯 Objective
+
+Today I learned the fundamentals of **Wazuh** and how it can be used for SOC monitoring.
+
+Topics covered:
+
+* What is Wazuh?
+* Wazuh architecture
+* Wazuh Agent
+* Wazuh Manager
+* Log collection
+* Security events
+* Alerts
+* Detection rules
+* Dashboard concepts
+* Investigating Linux security events
+* Basic SOC workflow with Wazuh
+
+---
+
+# 1. What is Wazuh?
+
+**Wazuh** is an open-source security platform used for:
+
+* Security monitoring
+* Threat detection
+* Log analysis
+* File integrity monitoring
+* Vulnerability detection
+* Security configuration monitoring
+* Incident investigation
+
+It can monitor Linux and Windows systems and collect security-related information from them.
+
+---
+
+# 2. Why Wazuh is Useful for a SOC Analyst
+
+Without a centralized platform:
+
+```text
+Linux Server 1 → Check logs
+Linux Server 2 → Check logs
+Windows PC     → Check logs
+Firewall        → Check logs
+```
+
+This becomes difficult at scale.
+
+With Wazuh:
+
+```text
+Linux ────────┐
+Windows ──────┤
+Endpoints ────┤
+Applications ─┤
+               ↓
+            Wazuh
+               ↓
+        Security Events
+               ↓
+             Alerts
+               ↓
+        SOC Investigation
+```
+
+---
+
+# 3. Wazuh Architecture
+
+A simplified architecture is:
+
+```text
+                ┌──────────────┐
+                │ Wazuh Agent  │
+                │ Linux/Windows│
+                └──────┬───────┘
+                       │
+                       │ Events
+                       ↓
+                ┌──────────────┐
+                │    Wazuh     │
+                │    Server    │
+                └──────┬───────┘
+                       │
+                       ↓
+                ┌──────────────┐
+                │ Wazuh Indexer│
+                └──────┬───────┘
+                       │
+                       ↓
+                ┌──────────────┐
+                │ Wazuh        │
+                │ Dashboard    │
+                └──────────────┘
+```
+
+### Main components
+
+| Component       | Purpose                                     |
+| --------------- | ------------------------------------------- |
+| Wazuh Agent     | Collects data from monitored endpoint       |
+| Wazuh Server    | Analyzes events and applies detection rules |
+| Wazuh Indexer   | Stores and indexes security data            |
+| Wazuh Dashboard | Visualizes and investigates events          |
+
+---
+
+# 4. Wazuh Agent
+
+The **Wazuh Agent** runs on a monitored endpoint.
+
+For example:
+
+```text
+Ubuntu Server
+     ↓
+Wazuh Agent
+     ↓
+Collects security information
+     ↓
+Sends events to Wazuh Server
+```
+
+It can monitor things such as:
+
+* Authentication logs
+* System logs
+* File changes
+* Running processes
+* Configuration
+* Security events
+
+---
+
+# 5. Wazuh Server
+
+The Wazuh Server receives and analyzes events from agents.
+
+Conceptually:
+
+```text
+Agent
+  ↓
+Event
+  ↓
+Wazuh Server
+  ↓
+Rules / Analysis
+  ↓
+Alert
+```
+
+The server determines whether an event matches a detection rule.
+
+---
+
+# 6. Wazuh Dashboard
+
+The dashboard provides a graphical interface for security monitoring.
+
+A SOC analyst can use it to:
+
+* Search events
+* View alerts
+* Filter by host
+* Filter by rule
+* Investigate users
+* Investigate authentication activity
+* Monitor file integrity
+* Review security events
+
+A typical SOC workflow is:
+
+```text
+Dashboard
+    ↓
+Alert
+    ↓
+Open Event
+    ↓
+Review Context
+    ↓
+Correlate
+    ↓
+Investigate
+```
+
+---
+
+# 7. What is a Wazuh Alert?
+
+Suppose a Linux server generates:
+
+```text
+Failed SSH login
+```
+
+Wazuh analyzes the event.
+
+If it matches a detection rule:
+
+```text
+Linux Event
+    ↓
+Wazuh Rule
+    ↓
+Alert Generated
+```
+
+The alert may contain information such as:
+
+```text
+Timestamp
+Host
+Username
+Source IP
+Event type
+Rule
+Severity
+Log message
+```
+
+---
+
+# 8. Alert Severity
+
+Wazuh assigns levels to alerts.
+
+Conceptually:
+
+```text
+Low
+ ↓
+Medium
+ ↓
+High
+ ↓
+Critical
+```
+
+Higher severity generally means the event deserves more attention.
+
+However:
+
+> **Severity alone does not determine whether an event is malicious.**
+
+The SOC analyst still needs to investigate context.
+
+---
+
+# 9. Important Wazuh Detection Areas
+
+Wazuh can help monitor:
+
+### Authentication
+
+```text
+SSH login
+Failed login
+Successful login
+Invalid user
+```
+
+### File Integrity
+
+```text
+File created
+File modified
+File deleted
+Permission changed
+```
+
+### Vulnerabilities
+
+```text
+Known vulnerable software
+Missing security updates
+```
+
+### Configuration
+
+```text
+Security configuration changes
+```
+
+### Processes and system activity
+
+```text
+Unexpected activity
+Suspicious behavior
+```
+
+---
+
+# 10. Connection With Your Previous Days
+
+Your previous learning now maps directly into Wazuh.
+
+```text
+Day 12
+Linux Authentication Logs
+       ↓
+Wazuh collects logs
+       ↓
+Day 14
+SSH Monitoring
+       ↓
+Wazuh Detection
+       ↓
+Day 18
+File Integrity Monitoring
+       ↓
+Wazuh FIM
+       ↓
+Day 19
+Suspicious Process Investigation
+       ↓
+Wazuh Security Events
+       ↓
+Day 20
+Incident Response
+       ↓
+Wazuh Alert Investigation
+```
+
+This is why learning Linux first was important.
+
+---
+
+# 11. Lab Preparation
+
+If you already have a Wazuh lab, use it today.
+
+If you don't have Wazuh installed yet, **do not spend today's entire session troubleshooting installation**.
+
+Today you can first understand the architecture and prepare your Linux endpoint.
+
+Check your system:
+
+```bash
+hostname
+```
+
+```bash
+uname -a
+```
+
+```bash
+whoami
+```
+
+```bash
+ip addr
+```
+
+Check whether a Wazuh agent already exists:
+
+```bash
+systemctl status wazuh-agent
+```
+
+If the service doesn't exist, you may see something similar to:
+
+```text
+Unit wazuh-agent.service could not be found.
+```
+
+That's okay.
+
+---
+
+# 12. Check Linux Logs
+
+Even without an installed Wazuh Agent, you can understand the data Wazuh would monitor.
+
+Authentication logs:
+
+```bash
+sudo tail -n 50 /var/log/auth.log
+```
+
+SSH events:
+
+```bash
+sudo journalctl -u ssh --since today
+```
+
+System events:
+
+```bash
+sudo journalctl --since today
+```
+
+---
+
+# 13. Create a Wazuh-Style Investigation
+
+Use the same investigation mindset from Day 22.
+
+Look for failed SSH attempts:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log
+```
+
+Count them:
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+Successful logins:
+
+```bash
+sudo grep "Accepted" /var/log/auth.log
+```
+
+Possible sudo activity:
+
+```bash
+sudo grep "sudo" /var/log/auth.log
+```
+
+Now imagine these events are being collected centrally by Wazuh.
+
+---
+
+# 14. Example Wazuh Investigation
+
+Suppose your dashboard shows:
+
+```text
+Alert:
+Multiple SSH Authentication Failures
+
+Host:
+ubuntu-server
+
+User:
+admin
+
+Source IP:
+192.168.1.50
+
+Severity:
+High
+```
+
+Don't immediately conclude:
+
+```text
+Attacker!
+```
+
+Instead investigate:
+
+```text
+Who?
+What?
+When?
+Where?
+Why?
+```
+
+---
+
+# 15. Correlate the Alert
+
+Search for other events from the same source IP.
+
+```text
+192.168.1.50
+      ↓
+Failed SSH
+      ↓
+Failed SSH
+      ↓
+Failed SSH
+      ↓
+Successful SSH
+      ↓
+sudo
+      ↓
+New Process
+      ↓
+Network Connection
+```
+
+Now the alert has context.
+
+This is exactly what you practiced on Days 20–22.
+
+---
+
+# 16. Wazuh File Integrity Monitoring
+
+One of the important Wazuh capabilities is **File Integrity Monitoring (FIM)**.
+
+You learned the basics on Day 18.
+
+Example:
+
+```text
+/etc/important.conf
+        ↓
+File modified
+        ↓
+Wazuh detects change
+        ↓
+Alert
+        ↓
+SOC investigates
+```
+
+The analyst can investigate:
+
+```text
+What changed?
+When did it change?
+Who changed it?
+Was the change authorized?
+Was there related process activity?
+Was there network activity?
+```
+
+---
+
+# 17. Wazuh SOC Workflow
+
+Your practical workflow now becomes:
+
+```text
+Endpoint
+   ↓
+Wazuh Agent
+   ↓
+Event Collection
+   ↓
+Wazuh Server
+   ↓
+Detection Rules
+   ↓
+Alert
+   ↓
+Dashboard
+   ↓
+Alert Triage
+   ↓
+Correlation
+   ↓
+Investigation
+   ↓
+Incident Response
+```
+
+---
+
+# 18. Day 23 Practical Challenge 🕵️
+
+Imagine your Wazuh dashboard reports:
+
+```text
+ALERT:
+Multiple SSH Authentication Failures
+
+Host:
+Linux-Server-01
+
+Source IP:
+192.168.1.50
+
+Username:
+admin
+```
+
+You discover:
+
+```text
+10:01 — Failed SSH login
+10:01 — Failed SSH login
+10:01 — Failed SSH login
+10:02 — Successful SSH login
+10:04 — sudo command
+10:06 — New process
+10:07 — Network connection
+```
+
+### Task 1 — Identify the initial alert
+
+```text
+Multiple SSH authentication failures
+```
+
+### Task 2 — Identify the source
+
+```text
+192.168.1.50
+```
+
+### Task 3 — Identify the account
+
+```text
+admin
+```
+
+### Task 4 — Find related activity
+
+```text
+Successful login
+        ↓
+sudo
+        ↓
+Process
+        ↓
+Network
+```
+
+### Task 5 — Determine whether more investigation is required
+
+```text
+Yes
+```
+
+### Task 6 — Write the analyst finding
+
+Example:
+
+```text
+Multiple SSH authentication failures from 192.168.1.50
+were followed by a successful login to the admin account.
+Subsequent privileged, process, and network activity was
+observed. Further investigation is required to determine
+whether the activity was authorized.
+```
+
+---
+
+# 19. Your First Wazuh Dashboard Tasks
+
+Once your Wazuh dashboard is available, practice locating:
+
+* [ ] Agents
+* [ ] Security events
+* [ ] Alerts
+* [ ] Rule information
+* [ ] Severity
+* [ ] Hostname
+* [ ] Username
+* [ ] Source IP
+* [ ] Timestamp
+* [ ] File integrity events
+
+Do not try to memorize every dashboard feature.
+
+Focus on answering:
+
+```text
+What happened?
+Where did it happen?
+Who was involved?
+When did it happen?
+What evidence supports it?
+```
+
+---
+
+# 20. SOC Analyst Alert Notes
+
+For every Wazuh alert, create notes like:
+
+```text
+Alert:
+Multiple SSH Authentication Failures
+
+Host:
+Linux-Server-01
+
+Source IP:
+192.168.1.50
+
+User:
+admin
+
+Time:
+10:01–10:02
+
+Related Events:
+Successful SSH login
+sudo activity
+Process activity
+Network activity
+
+Initial Assessment:
+Requires investigation
+
+Next Step:
+Correlate authentication, process, and network activity.
+```
+
+This is excellent practice for future SOC interviews.
+
+---
+
+# 21. Interview Questions
+
+1. What is Wazuh?
+2. What is a Wazuh Agent?
+3. What does the Wazuh Server do?
+4. What is the Wazuh Indexer?
+5. What is the purpose of the Wazuh Dashboard?
+6. How does Wazuh detect security events?
+7. What is a Wazuh alert?
+8. What is File Integrity Monitoring?
+9. How would you investigate a Wazuh SSH alert?
+10. How does Wazuh help a SOC analyst?
+11. What information would you extract from a Wazuh alert?
+12. How would you correlate a Wazuh alert with other Linux events?
+
+---
+
+# 22. GitHub Structure
+
+```text
+180-days-cybersecurity-challenge/
+│
+├── Day-20/
+├── Day-21/
+├── Day-22/
+│
+└── Day-23/
+    ├── README.md
+    └── screenshots/
+        ├── wazuh-architecture.png
+        ├── wazuh-dashboard.png
+        ├── agents.png
+        ├── security-events.png
+        ├── ssh-alert.png
+        ├── alert-details.png
+        ├── event-correlation.png
+        └── investigation-notes.png
+```
+
+If you don't have Wazuh installed yet, don't create fake screenshots. You can document today's **architecture and Linux log investigation** and add real Wazuh screenshots once your lab is running.
+
+---
+
+# 📸 Screenshots to Capture
+
+If Wazuh is already installed:
+
+* [ ] Wazuh Dashboard
+* [ ] Agent status
+* [ ] Security events
+* [ ] Alert list
+* [ ] SSH-related alert
+* [ ] Alert details
+* [ ] Source IP
+* [ ] Event correlation
+
+If Wazuh is not installed:
+
+* [ ] Linux authentication logs
+* [ ] SSH events
+* [ ] System information
+* [ ] Your Wazuh architecture diagram
+* [ ] Investigation notes
+
+---
+
+# ✅ Day 23 Checklist
+
+* [ ] Understand Wazuh
+* [ ] Understand Wazuh Agent
+* [ ] Understand Wazuh Server
+* [ ] Understand Wazuh Indexer
+* [ ] Understand Wazuh Dashboard
+* [ ] Understand Wazuh alerts
+* [ ] Understand detection rules
+* [ ] Review Linux authentication logs
+* [ ] Understand Wazuh FIM
+* [ ] Correlate an SSH alert
+* [ ] Write an analyst finding
+* [ ] Document the investigation
+* [ ] Upload screenshots to GitHub
+
+---
+
+# 🔥 Day 23 Skill
+
+```text
+Linux Endpoint
+      ↓
+Wazuh Agent
+      ↓
+Event Collection
+      ↓
+Wazuh Server
+      ↓
+Detection
+      ↓
+Alert
+      ↓
+Dashboard
+      ↓
+SOC Analyst
+      ↓
+Investigation
+```
+
+## What I learned
+
+I learned how Wazuh can collect security events from endpoints, analyze those events using detection rules, generate alerts, and provide a centralized platform for SOC analysts to investigate security activity.
+
+> **Wazuh turns endpoint security data into centralized, searchable security events and alerts.**
