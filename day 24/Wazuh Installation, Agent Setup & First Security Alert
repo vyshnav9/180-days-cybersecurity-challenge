@@ -1,0 +1,1093 @@
+# Day 24 — Wazuh Installation, Agent Setup & First Security Alert 🛡️
+
+## 🎯 Objective
+
+Today I moved from **Wazuh fundamentals to hands-on SOC monitoring**.
+
+Topics covered:
+
+* Wazuh installation
+* Wazuh central components
+* Wazuh Dashboard
+* Wazuh Agent
+* Linux endpoint monitoring
+* Agent enrollment
+* Authentication log monitoring
+* Generating controlled SSH failures
+* Investigating the first Wazuh security alert
+* Basic alert triage
+
+> **Important:** Perform all testing only on your own VM/lab systems.
+
+---
+
+# 1. Day 24 Architecture
+
+Today the practical architecture is:
+
+```text
+              Linux VM
+                 │
+                 │
+          Wazuh Agent
+                 │
+                 │ Events
+                 ↓
+          Wazuh Server
+                 │
+                 ↓
+          Wazuh Indexer
+                 │
+                 ↓
+         Wazuh Dashboard
+                 │
+                 ↓
+           SOC Analyst
+```
+
+The Wazuh agent runs on the endpoint and sends security information to the Wazuh server through an encrypted and authenticated channel.
+
+---
+
+# 2. Lab Setup
+
+Recommended setup:
+
+```text
+Virtual Machine
+      │
+      ├── Ubuntu Linux
+      │
+      └── Wazuh
+```
+
+For a beginner lab, an **Ubuntu VM** is a good environment.
+
+You can also use:
+
+```text
+Host Machine
+     ↓
+VirtualBox / VMware
+     ↓
+Ubuntu VM
+     ↓
+Wazuh
+```
+
+Keep the lab isolated from systems you do not own.
+
+---
+
+# 3. Check Your Linux System
+
+Run:
+
+```bash
+hostname
+```
+
+```bash
+uname -a
+```
+
+```bash
+whoami
+```
+
+```bash
+ip addr
+```
+
+Check available memory:
+
+```bash
+free -h
+```
+
+Check disk space:
+
+```bash
+df -h
+```
+
+These checks are useful before installing security monitoring software.
+
+---
+
+# 4. Option A — Quick Wazuh Installation
+
+Wazuh's current Quickstart documentation provides an installation assistant for installing the central components on a single host.
+
+Download the assistant:
+
+```bash
+curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
+```
+
+Run the quickstart installation:
+
+```bash
+sudo bash ./wazuh-install.sh -a
+```
+
+The current Wazuh documentation states that this installs the central components and provides the dashboard address and credentials when the installation completes.
+
+---
+
+# 5. Access the Wazuh Dashboard
+
+After installation, you should receive information similar to:
+
+```text
+Wazuh Dashboard:
+https://<WAZUH_DASHBOARD_IP_ADDRESS>
+
+Username:
+admin
+
+Password:
+<generated password>
+```
+
+Open the dashboard in your browser:
+
+```text
+https://<WAZUH_DASHBOARD_IP_ADDRESS>
+```
+
+The first connection may show a certificate warning because the default certificate is not issued by a publicly trusted certificate authority. This is expected for the lab setup.
+
+---
+
+# 6. Verify Wazuh Services
+
+After installation, check the services.
+
+For example:
+
+```bash
+sudo systemctl status wazuh-manager
+```
+
+Check the indexer:
+
+```bash
+sudo systemctl status wazuh-indexer
+```
+
+Check the dashboard:
+
+```bash
+sudo systemctl status wazuh-dashboard
+```
+
+You want to see services in a running/active state.
+
+Example:
+
+```text
+Active: active (running)
+```
+
+---
+
+# 7. Understand the Central Components
+
+Your Wazuh installation contains:
+
+```text
+Wazuh Server
+      ↓
+Analyzes events
+      ↓
+Wazuh Indexer
+      ↓
+Stores security data
+      ↓
+Wazuh Dashboard
+      ↓
+Visualizes the data
+```
+
+The current Wazuh Quickstart installs the central components together on one host.
+
+---
+
+# 8. Deploy the Wazuh Agent
+
+The next step is monitoring a Linux endpoint.
+
+The Wazuh agent can collect:
+
+* Authentication logs
+* System logs
+* File changes
+* Security configuration information
+* System inventory
+* Other endpoint security events
+
+Wazuh provides Linux packages for supported distributions, and the current agent documentation recommends deploying the agent from the official Wazuh repository.
+
+---
+
+# 9. Add the Wazuh Repository
+
+For a Debian/Ubuntu endpoint, install the required packages:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y gnupg apt-transport-https curl
+```
+
+Import the Wazuh GPG key:
+
+```bash
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
+sudo gpg --no-default-keyring \
+--keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg \
+--import
+```
+
+Set permissions:
+
+```bash
+sudo chmod 644 /usr/share/keyrings/wazuh.gpg
+```
+
+Add the repository:
+
+```bash
+echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | \
+sudo tee /etc/apt/sources.list.d/wazuh.list
+```
+
+Update:
+
+```bash
+sudo apt-get update
+```
+
+These are based on the current official Linux agent deployment instructions.
+
+---
+
+# 10. Install the Wazuh Agent
+
+Replace:
+
+```text
+WAZUH_MANAGER_IP
+```
+
+with the IP address of your Wazuh server.
+
+Example:
+
+```bash
+WAZUH_MANAGER="192.168.1.10" sudo apt-get install wazuh-agent
+```
+
+The official documentation uses the `WAZUH_MANAGER` deployment variable to specify the Wazuh manager address.
+
+---
+
+# 11. Start the Wazuh Agent
+
+Run:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Enable the service:
+
+```bash
+sudo systemctl enable wazuh-agent
+```
+
+Start it:
+
+```bash
+sudo systemctl start wazuh-agent
+```
+
+Check:
+
+```bash
+sudo systemctl status wazuh-agent
+```
+
+Expected concept:
+
+```text
+Active: active (running)
+```
+
+The official Wazuh Linux agent documentation uses the same enable/start workflow.
+
+---
+
+# 12. Verify Agent Communication
+
+Check the agent log:
+
+```bash
+sudo tail -n 50 /var/ossec/logs/ossec.log
+```
+
+This is an important troubleshooting location for Wazuh agents on Linux.
+
+Look for messages indicating successful connection/enrollment.
+
+---
+
+# 13. Check the Dashboard
+
+Open:
+
+```text
+Wazuh Dashboard
+       ↓
+Agents
+       ↓
+Agent list
+```
+
+You should eventually see your Linux endpoint.
+
+Example:
+
+```text
+Agent Name:
+ubuntu-lab
+
+Status:
+Active
+
+Operating System:
+Ubuntu
+
+IP:
+192.168.1.20
+```
+
+Your actual values will be different.
+
+---
+
+# 14. If the Agent Does Not Connect
+
+Don't panic.
+
+First check:
+
+```bash
+sudo systemctl status wazuh-agent
+```
+
+Then:
+
+```bash
+sudo tail -n 50 /var/ossec/logs/ossec.log
+```
+
+Check network connectivity to the manager.
+
+Wazuh documents these default manager ports:
+
+```text
+1514/TCP → Agent communication
+1515/TCP → Agent enrollment
+55000/TCP → Wazuh server API enrollment
+```
+
+You can test connectivity with:
+
+```bash
+nc -zv <WAZUH_MANAGER_IP> 1514 1515 55000
+```
+
+These ports and the connectivity check are documented by Wazuh for enrollment troubleshooting.
+
+---
+
+# 15. Generate a Controlled SSH Event
+
+Now we create our first security event.
+
+We will deliberately generate failed SSH authentication attempts **against our own lab machine**.
+
+Example:
+
+```bash
+ssh wronguser@localhost
+```
+
+Enter an incorrect password when prompted.
+
+Repeat this a few times.
+
+For example:
+
+```text
+Attempt 1 → Failed
+Attempt 2 → Failed
+Attempt 3 → Failed
+```
+
+Do not perform repeated login attempts against external systems.
+
+---
+
+# 16. Check the Linux Authentication Log
+
+After generating the event:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | tail
+```
+
+You may see something similar to:
+
+```text
+Failed password for invalid user wronguser from 127.0.0.1
+Failed password for invalid user wronguser from 127.0.0.1
+Failed password for invalid user wronguser from 127.0.0.1
+```
+
+This proves that the endpoint generated authentication events.
+
+---
+
+# 17. Check the Wazuh Dashboard
+
+Go to the Wazuh dashboard and look for security events/alerts related to:
+
+```text
+SSH
+authentication
+failed login
+invalid user
+```
+
+You may see information such as:
+
+```text
+Timestamp
+Host
+Username
+Source IP
+Rule
+Severity
+Event
+```
+
+The exact alert/rule details depend on the event and your Wazuh configuration.
+
+---
+
+# 18. First Alert Investigation 🕵️
+
+Suppose Wazuh reports:
+
+```text
+Alert:
+SSH Authentication Failure
+
+Host:
+ubuntu-lab
+
+User:
+wronguser
+
+Source:
+127.0.0.1
+
+Service:
+SSH
+```
+
+Now perform basic SOC triage.
+
+Ask:
+
+```text
+WHO?
+WHAT?
+WHEN?
+WHERE?
+WHY?
+```
+
+---
+
+# 19. WHO?
+
+Identify the account:
+
+```text
+wronguser
+```
+
+Was this a valid user?
+
+Check:
+
+```bash
+getent passwd wronguser
+```
+
+If nothing is returned, the account may not exist.
+
+---
+
+# 20. WHAT?
+
+The event was:
+
+```text
+SSH authentication failure
+```
+
+This means an authentication attempt failed.
+
+It does NOT automatically mean:
+
+```text
+Successful compromise
+```
+
+---
+
+# 21. WHEN?
+
+Check the event timestamp.
+
+Example:
+
+```text
+10:15:01
+10:15:05
+10:15:10
+```
+
+Multiple failures close together are more interesting than a single isolated failure.
+
+---
+
+# 22. WHERE?
+
+Identify the source IP.
+
+Example:
+
+```text
+127.0.0.1
+```
+
+In this lab, that is expected because the test was performed against the local machine.
+
+This is an important SOC lesson:
+
+> **Context changes the meaning of an alert.**
+
+A failed SSH login from your own lab machine is very different from an unexpected login attempt from an unknown external address.
+
+---
+
+# 23. WHY?
+
+Ask:
+
+```text
+Was this activity expected?
+```
+
+In our lab:
+
+```text
+Yes
+```
+
+because:
+
+```text
+We generated the event intentionally.
+```
+
+Therefore:
+
+```text
+Alert
+ ↓
+Investigation
+ ↓
+Known lab activity
+ ↓
+Benign / expected
+```
+
+This is an example of why analysts must investigate alerts instead of blindly treating every alert as an attack.
+
+---
+
+# 24. Generate a Successful Login
+
+If you have a test account on your own lab VM, perform a normal SSH login:
+
+```bash
+ssh <your-test-user>@localhost
+```
+
+Then check:
+
+```bash
+sudo grep "Accepted" /var/log/auth.log | tail
+```
+
+Now you can compare:
+
+```text
+Failed Authentication
+        ↓
+Successful Authentication
+```
+
+This connects directly to your Day 14 and Day 22 investigations.
+
+---
+
+# 25. Correlation Exercise
+
+Create this timeline:
+
+```text
+10:15:01
+Failed SSH
+     ↓
+10:15:05
+Failed SSH
+     ↓
+10:15:10
+Failed SSH
+     ↓
+10:16:00
+Successful SSH
+```
+
+Ask:
+
+```text
+Was the activity expected?
+
+Who logged in?
+
+From which IP?
+
+Which account was used?
+
+What happened after login?
+```
+
+Then check:
+
+```bash
+who
+```
+
+```bash
+w
+```
+
+```bash
+last
+```
+
+---
+
+# 26. Investigate Post-Login Activity
+
+After a test login, check the user's activity in your own lab.
+
+Check processes:
+
+```bash
+ps aux
+```
+
+Check network connections:
+
+```bash
+sudo ss -tunap
+```
+
+Check sudo activity:
+
+```bash
+sudo grep "sudo" /var/log/auth.log | tail
+```
+
+Now your investigation becomes:
+
+```text
+Authentication
+      ↓
+User
+      ↓
+Privilege
+      ↓
+Process
+      ↓
+Network
+```
+
+This is the same correlation workflow you learned during Days 14–22.
+
+---
+
+# 27. Create Your First Wazuh Investigation Report
+
+Example:
+
+```text
+Alert:
+SSH Authentication Failure
+
+Host:
+ubuntu-lab
+
+Username:
+wronguser
+
+Source IP:
+127.0.0.1
+
+Service:
+SSH
+
+Event:
+Failed authentication
+
+Investigation:
+The event was generated intentionally during a
+controlled local security monitoring test.
+
+Assessment:
+Benign / Expected Lab Activity
+
+Next Step:
+No escalation required.
+```
+
+---
+
+# 28. SOC Investigation Flow
+
+Your Day 24 workflow:
+
+```text
+Generate Event
+      ↓
+Linux Authentication Log
+      ↓
+Wazuh Agent
+      ↓
+Wazuh Server
+      ↓
+Detection Rule
+      ↓
+Wazuh Alert
+      ↓
+Dashboard
+      ↓
+SOC Analyst
+      ↓
+Triage
+      ↓
+Correlation
+      ↓
+Finding
+```
+
+This is the first time your previous Linux/SIEM knowledge becomes a complete monitoring pipeline.
+
+---
+
+# 29. Day 24 Practical Challenge 🔥
+
+### Scenario
+
+Generate:
+
+```text
+3 failed SSH attempts
+```
+
+Then collect:
+
+```text
+Source IP
+Username
+Timestamp
+Hostname
+Service
+```
+
+Find the event in Wazuh.
+
+Then answer:
+
+### Q1. What caused the alert?
+
+```text
+SSH authentication failures
+```
+
+### Q2. Which host generated it?
+
+```text
+Your Linux lab machine
+```
+
+### Q3. Which account was involved?
+
+```text
+Your test account / invalid test username
+```
+
+### Q4. What was the source IP?
+
+```text
+Your test source IP
+```
+
+### Q5. Was it malicious?
+
+```text
+No evidence of malicious activity.
+It was intentionally generated as a lab event.
+```
+
+### Q6. What would make it more suspicious?
+
+Examples:
+
+```text
+Unknown source IP
+Repeated failures
+Successful login afterward
+Unexpected sudo activity
+Suspicious process
+Unexpected outbound connection
+```
+
+---
+
+# 30. Troubleshooting Notes
+
+If the agent is installed but not visible:
+
+```bash
+sudo systemctl status wazuh-agent
+```
+
+Check logs:
+
+```bash
+sudo tail -n 100 /var/ossec/logs/ossec.log
+```
+
+Check network:
+
+```bash
+ip addr
+```
+
+```bash
+ip route
+```
+
+Check connectivity:
+
+```bash
+nc -zv <WAZUH_MANAGER_IP> 1514
+```
+
+Then check:
+
+```text
+Manager
+   ↓
+Agent enrollment
+   ↓
+Network
+   ↓
+Agent service
+   ↓
+Agent logs
+```
+
+Do not repeatedly reinstall everything before identifying the actual problem.
+
+---
+
+# 31. Important Lab Rule
+
+Never generate login attempts against:
+
+```text
+Public servers
+College servers
+Company systems
+Random IP addresses
+Other people's machines
+```
+
+Practice only on:
+
+```text
+Your VM
+Your laptop
+Your own lab network
+Authorized training environments
+```
+
+---
+
+# 32. GitHub Structure
+
+Update your repository:
+
+```text
+180-days-cybersecurity-challenge/
+│
+├── Day-21/
+├── Day-22/
+├── Day-23/
+│
+└── Day-24/
+    ├── README.md
+    └── screenshots/
+        ├── wazuh-installation.png
+        ├── wazuh-dashboard.png
+        ├── wazuh-agent.png
+        ├── agent-status.png
+        ├── ssh-test.png
+        ├── auth-log.png
+        ├── wazuh-alert.png
+        ├── alert-details.png
+        ├── event-investigation.png
+        └── investigation-report.png
+```
+
+Use **relative image paths** in your README so the screenshots work when someone views your GitHub repository.
+
+Example:
+
+```markdown
+![Wazuh Dashboard](screenshots/wazuh-dashboard.png)
+```
+
+---
+
+# 33. 📸 Screenshots to Capture
+
+Capture real screenshots of:
+
+* [ ] Wazuh installation
+* [ ] Wazuh Dashboard
+* [ ] Wazuh Agent status
+* [ ] Agent visible in dashboard
+* [ ] SSH test
+* [ ] Linux authentication log
+* [ ] Wazuh SSH alert
+* [ ] Alert details
+* [ ] Source IP
+* [ ] Event timeline
+* [ ] Final investigation report
+
+**Do not create fake screenshots.**
+
+If your installation is not working yet, document the troubleshooting instead.
+
+---
+
+# 34. Interview Questions
+
+### Beginner
+
+1. What is Wazuh?
+2. What is a Wazuh Agent?
+3. What is a Wazuh Server?
+4. What is the Wazuh Dashboard?
+5. Why would a company use Wazuh?
+
+### SOC Questions
+
+6. How would you investigate a Wazuh SSH alert?
+7. What information would you collect from an alert?
+8. How do you determine whether an alert is legitimate?
+9. Why is source IP important?
+10. How would you correlate an authentication alert with process activity?
+
+### Practical Questions
+
+11. Where are Wazuh agent logs stored on Linux?
+12. Which ports are commonly involved in Wazuh agent communication and enrollment?
+13. How would you troubleshoot an agent that isn't connecting?
+14. How does Wazuh help with File Integrity Monitoring?
+15. What is the difference between an alert and an incident?
+
+---
+
+# 35. Day 24 Checklist
+
+* [ ] Set up a Linux lab
+* [ ] Install Wazuh
+* [ ] Access Wazuh Dashboard
+* [ ] Verify Wazuh services
+* [ ] Deploy Wazuh Agent
+* [ ] Start Wazuh Agent
+* [ ] Verify agent communication
+* [ ] Generate controlled SSH failures
+* [ ] Check Linux authentication logs
+* [ ] Find the event in Wazuh
+* [ ] Identify username
+* [ ] Identify source IP
+* [ ] Identify timestamp
+* [ ] Perform alert triage
+* [ ] Determine whether activity was expected
+* [ ] Write an investigation report
+* [ ] Capture screenshots
+* [ ] Upload Day 24 to GitHub
+
+---
+
+# 🔥 Day 24 Skill
+
+```text
+Wazuh Installation
+        ↓
+Agent Deployment
+        ↓
+Endpoint Monitoring
+        ↓
+Security Event
+        ↓
+Wazuh Detection
+        ↓
+Alert
+        ↓
+Alert Triage
+        ↓
+Investigation
+        ↓
+SOC Finding
+```
+
+## What I learned
+
+I learned how to set up Wazuh, deploy a Linux agent, monitor authentication activity, generate a controlled SSH security event, locate the event in Wazuh, perform basic alert triage, and document the investigation.
+
+> **A SOC analyst doesn't just see an alert — they collect evidence, add context, and determine what the alert actually means.**
