@@ -1,0 +1,355 @@
+# Day 25 — Wazuh Log Collection & Custom Detection Rules 🔍
+
+## 🎯 Objective
+
+Today I learned how to test Wazuh detection rules and create a basic custom rule for identifying suspicious authentication activity.
+
+Topics covered:
+
+- Log collection and analysis
+- Wazuh rules and rule levels
+- Custom detection rules
+- XML rule configuration
+- Testing rules with `wazuh-logtest`
+- SSH authentication event detection
+- Alert validation
+- SOC investigation notes
+
+---
+
+## 1. How Wazuh Analyzes Logs
+
+Wazuh processes incoming log events using decoders and rules. Decoders extract useful information, while rules determine whether an event matches a detection condition. <Cite refs={["turn376644search3","turn376644search7"]}/>
+
+```text
+Log Event
+    ↓
+Log Collection
+    ↓
+Decoder
+    ↓
+Detection Rule
+    ↓
+Alert (if matched)
+    ↓
+SOC Investigation
+```
+
+## 2. What Is a Detection Rule?
+
+A **detection rule** defines conditions that Wazuh uses to recognize a particular event or behavior.
+
+Example:
+
+```text
+Event:
+SSH login attempted using an invalid username
+
+Detection:
+Match the event against a rule
+
+Result:
+Generate an alert when the rule conditions are met
+```
+
+Wazuh rules have unique IDs and severity levels. Custom rule IDs should use the range `100000–120000` to avoid conflicts with built-in rules. <Cite refs={["turn376644search0","turn376644search7"]}/>
+
+## 3. Understand Wazuh Rule Levels
+
+Wazuh rule levels range from `0` to `16`.
+
+- Level `0`: ignored event
+- Higher levels: generally indicate greater security relevance
+- The configured level does not, by itself, prove that an attack occurred
+
+Always investigate the event and its context.
+
+## 4. Open the Wazuh Server
+
+Run these commands on your **Wazuh server**, not automatically on your monitored Ubuntu endpoint.
+
+Check the manager:
+
+```bash
+sudo systemctl status wazuh-manager
+```
+
+Check the rule directory:
+
+```bash
+sudo ls -l /var/ossec/etc/rules/
+```
+
+The local rules file is:
+
+```text
+/var/ossec/etc/rules/local_rules.xml
+```
+
+Use this location for custom rules rather than editing files inside the built-in ruleset directory. <Cite refs={["turn376644search0","turn376644search3"]}/>
+
+## 5. Create a Custom Rule
+
+Back up your existing local rules file first:
+
+```bash
+sudo cp /var/ossec/etc/rules/local_rules.xml \
+/var/ossec/etc/rules/local_rules.xml.bak
+```
+
+Open it:
+
+```bash
+sudo nano /var/ossec/etc/rules/local_rules.xml
+```
+
+Inside the existing top-level `<group>` structure, add this rule. If the file already has an outer group, place the new `<rule>` inside it rather than creating an extra unmatched XML tag.
+
+```xml
+<rule id="100100" level="5">
+  <match>DAY25_TEST_EVENT</match>
+  <description>Day 25 lab: custom test event detected</description>
+  <group>day25,custom_detection,</group>
+</rule>
+```
+
+Save the file.
+
+**What this rule does:**
+
+- `id="100100"` — unique custom rule ID for this lab
+- `level="5"` — configured alert level
+- `<match>` — looks for the test string in the event
+- `<description>` — explains the detection
+- `<group>` — categorizes the rule
+
+This is a deliberately simple lab rule, not a production-ready SSH brute-force detection. Wazuh supports matching conditions such as these in custom rules. <Cite refs={["turn376644search0","turn376644search9"]}/>
+
+## 6. Test the Custom Rule
+
+Wazuh provides a utility called `wazuh-logtest` to test how logs are decoded and which rules match them. <Cite refs={["turn376644search1","turn376644search2"]}/>
+
+Run:
+
+```bash
+sudo /var/ossec/bin/wazuh-logtest
+```
+
+Paste this sample event:
+
+```text
+DAY25_TEST_EVENT
+```
+
+Look at the output from the rule-matching phase.
+
+Expected result:
+
+```text
+Rule ID: 100100
+Level: 5
+Description: Day 25 lab: custom test event detected
+```
+
+The actual output format may differ by version. Confirm that your custom rule ID `100100` is matched.
+
+Exit the tool with `Ctrl+C`.
+
+## 7. Test a Non-Matching Event
+
+Run `wazuh-logtest` again:
+
+```bash
+sudo /var/ossec/bin/wazuh-logtest
+```
+
+Enter:
+
+```text
+NORMAL_SYSTEM_EVENT
+```
+
+The custom rule should not match this event because it does not contain `DAY25_TEST_EVENT`.
+
+Other built-in rules may match depending on the event format and your Wazuh version.
+
+**Key lesson:** A rule should match the condition you intended, not unrelated events.
+
+## 8. Understand Testing vs. Live Alerts
+
+There is an important difference:
+
+```text
+wazuh-logtest
+      ↓
+Tests rule matching in a test session
+
+Live endpoint event
+      ↓
+Wazuh log collection
+      ↓
+Analysis engine
+      ↓
+Alert, if applicable
+```
+
+Testing a sample with `wazuh-logtest` does not itself prove that a live alert has been generated or indexed in the dashboard.
+
+After changing a rule, Wazuh documents that you should restart the manager for the updated rule to be used by live alert processing. Test the rule first and check the configuration before restarting. <Cite refs={["turn376644search0","turn376644search1"]}/>
+
+## 9. Check the Manager Configuration
+
+After saving your custom rule, test the sample event first with `wazuh-logtest`.
+
+If the rule matches, you can check the manager configuration and restart the manager to load the change:
+
+```bash
+sudo systemctl restart wazuh-manager
+```
+
+Then verify:
+
+```bash
+sudo systemctl status wazuh-manager
+```
+
+Restarting the manager may briefly interrupt event processing, so do this only in your lab and not during production monitoring.
+
+## 10. Connect the Rule to a SOC Use Case
+
+Now consider a real defensive use case: SSH authentication monitoring.
+
+Example event:
+
+```text
+Oct 10 10:15:00 ubuntu-lab sshd[1234]:
+Invalid user testuser from 192.0.2.25 port 54321
+```
+
+Use `wazuh-logtest` to examine how Wazuh parses the event and which built-in rule matches it.
+
+You can compare the output with your custom test rule.
+
+Do not assume that a custom rule for the string `DAY25_TEST_EVENT` will detect SSH activity; it was created only to demonstrate custom-rule testing.
+
+## 11. SOC Investigation Questions
+
+When an authentication alert appears, investigate:
+
+```text
+WHO?
+Which username was involved?
+
+WHAT?
+Was it a failed login, invalid user, or successful login?
+
+WHEN?
+What is the event timestamp?
+
+WHERE?
+What are the source IP and destination host?
+
+CONTEXT?
+Were there repeated attempts or a later successful login?
+
+NEXT STEP?
+Is the activity expected, suspicious, or unresolved?
+```
+
+A single failed login is not enough to confirm a brute-force attack.
+
+## 12. Day 25 Practical Challenge 🕵️
+
+Complete these tasks:
+
+- [ ] Locate `local_rules.xml`
+- [ ] Back up the existing file
+- [ ] Add custom rule `100100`
+- [ ] Test `DAY25_TEST_EVENT`
+- [ ] Confirm that rule `100100` matches
+- [ ] Test `NORMAL_SYSTEM_EVENT`
+- [ ] Confirm the custom rule does not match
+- [ ] Examine a sample SSH authentication event
+- [ ] Record the rule ID and event details
+- [ ] Document the results
+
+### Sample lab results
+
+```text
+Test 1:
+Input: DAY25_TEST_EVENT
+Expected: Custom rule 100100 matches
+
+Test 2:
+Input: NORMAL_SYSTEM_EVENT
+Expected: Custom rule 100100 does not match
+
+Test 3:
+Input: SSH authentication event
+Expected: Inspect the decoder and matching built-in rules
+```
+
+Record your **actual results**, not just the expected results.
+
+## 13. GitHub Structure
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-25/
+    ├── README.md
+    └── screenshots/
+        ├── local-rules-file.png
+        ├── custom-rule.png
+        ├── logtest-match.png
+        ├── logtest-nonmatch.png
+        ├── ssh-event-analysis.png
+        └── lab-results.png
+```
+
+## 14. Screenshots to Capture
+
+- [ ] Existing local rules file before editing
+- [ ] Custom rule configuration
+- [ ] `wazuh-logtest` matching the custom rule
+- [ ] Non-matching test
+- [ ] SSH event analysis
+- [ ] Final lab results
+
+Never upload passwords, API tokens, private keys, or other sensitive information to GitHub.
+
+## 15. Interview Questions
+
+1. What is a Wazuh detection rule?
+2. What is a decoder?
+3. What is the purpose of `local_rules.xml`?
+4. Why should custom rule IDs avoid built-in rule IDs?
+5. What is `wazuh-logtest` used for?
+6. What is the difference between testing a rule and generating a live alert?
+7. What is a false positive?
+8. Why should custom rules be tested before deployment?
+9. How would you investigate a failed SSH login alert?
+10. Why should you avoid editing built-in ruleset files directly?
+
+## 16. Day 25 Summary
+
+```text
+Log
+ ↓
+Decoder
+ ↓
+Custom Rule
+ ↓
+Rule Test
+ ↓
+Validate Match
+ ↓
+Live Monitoring
+ ↓
+Alert Investigation
+```
+
+### What I learned
+
+I learned how to create a basic Wazuh custom detection rule, test matching and non-matching events with `wazuh-logtest`, and connect rule testing to a defensive SOC investigation workflow.
+
+> **A detection rule is only useful when it matches the right behavior and has been tested against both expected and unexpected inputs.**
