@@ -1,0 +1,487 @@
+# Day 26 — Wazuh SSH Brute-Force Detection & Alert Investigation 🛡️
+
+## 🎯 Objective
+
+Today I practiced how a SOC analyst investigates repeated SSH authentication failures using Wazuh and Linux logs.
+
+Topics covered:
+
+- SSH authentication monitoring
+- Identifying repeated failed logins
+- Source IP and username investigation
+- Wazuh alert analysis
+- Event timeline creation
+- Correlating failed and successful logins
+- Writing a SOC investigation report
+
+> **Safety:** Perform all tests only on your own Linux VM or an authorized lab.
+
+---
+
+## 1. What Is SSH Brute Force?
+
+SSH brute force is an attack technique in which someone repeatedly attempts to authenticate to an SSH service using different passwords or usernames.
+
+Example:
+
+```text
+SSH Service
+    ↓
+Failed Login
+    ↓
+Failed Login
+    ↓
+Failed Login
+    ↓
+Repeated Authentication Attempts
+    ↓
+Investigate for Possible Brute Force
+```
+
+Repeated failures may indicate brute-force activity, but they can also result from a forgotten password, an incorrectly configured service, or a monitoring system. Always investigate the context.
+
+---
+
+## 2. Understand the SOC Detection Workflow
+
+```text
+Linux Endpoint
+      ↓
+SSH Authentication Events
+      ↓
+Wazuh Agent
+      ↓
+Wazuh Server
+      ↓
+Detection Rules
+      ↓
+Wazuh Alert
+      ↓
+SOC Analyst
+      ↓
+Investigation and Triage
+```
+
+Wazuh can analyze collected events using its detection rules and display matching alerts in the dashboard.
+
+---
+
+## 3. Check SSH Authentication Logs
+
+On your Ubuntu lab machine, run:
+
+```bash
+sudo grep -Ei "Failed password|Invalid user" /var/log/auth.log | tail -n 30
+```
+
+This searches for common SSH authentication failure messages.
+
+To count failed-password entries:
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+To view successful SSH authentication entries:
+
+```bash
+sudo grep "Accepted" /var/log/auth.log | tail -n 20
+```
+
+**Note:** These commands assume your system stores authentication logs in `/var/log/auth.log`. On other distributions, use `journalctl` or the appropriate authentication log.
+
+For SSH service events:
+
+```bash
+sudo journalctl -u ssh --since "1 hour ago"
+```
+
+If your service is named `sshd`, use:
+
+```bash
+sudo journalctl -u sshd --since "1 hour ago"
+```
+
+---
+
+## 4. Generate a Safe Test Event
+
+Use only your own lab machine.
+
+If SSH is available locally, run:
+
+```bash
+ssh invalid-lab-user@localhost
+```
+
+If prompted, enter an incorrect password for a test account, or allow the invalid username attempt to fail.
+
+Then inspect the logs:
+
+```bash
+sudo grep -Ei "Failed password|Invalid user" /var/log/auth.log | tail
+```
+
+You may see a message similar to:
+
+```text
+Failed password for invalid user invalid-lab-user from 127.0.0.1
+```
+
+The exact message depends on the SSH configuration and authentication method.
+
+Do not run automated password-guessing tools or test against public systems for this exercise.
+
+---
+
+## 5. Identify the Important Fields
+
+When you find an authentication event, record:
+
+| Field | What to identify |
+|---|---|
+| Timestamp | When did it happen? |
+| Hostname | Which endpoint generated it? |
+| Username | Which account was targeted? |
+| Source IP | Where did the connection originate? |
+| Event | Was it a failed or successful login? |
+| Frequency | Were there repeated attempts? |
+
+Example:
+
+```text
+Timestamp: 10:15:01
+Hostname: ubuntu-lab
+Username: invalid-lab-user
+Source IP: 127.0.0.1
+Event: Failed SSH authentication
+```
+
+These are illustrative values. Use the evidence from your own system.
+
+---
+
+## 6. Find SSH Events in Wazuh
+
+If your Wazuh installation and agent are working:
+
+1. Open the Wazuh Dashboard.
+2. Navigate to the security events or threat-detection views available in your version.
+3. Filter for SSH-related authentication events.
+4. Search for the test username, hostname, or source IP.
+5. Open a matching event and inspect its details.
+
+Record the following:
+
+```text
+Rule ID:
+Rule Description:
+Alert Level:
+Agent / Host:
+Username:
+Source IP:
+Timestamp:
+Full Log Message:
+```
+
+The exact navigation labels and fields may vary by Wazuh version and the event that was collected.
+
+**Important:** A Linux log entry does not guarantee that a corresponding Wazuh alert will appear. Confirm that the agent collects the relevant log, that the event reaches the manager, and that a detection rule matches it.
+
+---
+
+## 7. Investigate Repeated Attempts
+
+A single failure may be ordinary user error. Repeated failures against one or more accounts deserve closer investigation.
+
+Look for:
+
+```text
+10:15:01 — Failed login
+10:15:05 — Failed login
+10:15:09 — Failed login
+10:15:13 — Failed login
+```
+
+Ask:
+
+- Did all attempts come from the same source IP?
+- Were multiple usernames targeted?
+- Did the attempts happen within a short period?
+- Was there a successful login afterward?
+- Was the activity expected?
+- Are there related events on the endpoint?
+
+Do not label the activity as a confirmed attack based only on repeated failures.
+
+---
+
+## 8. Check for a Successful Login After Failures
+
+Search your authentication logs:
+
+```bash
+sudo grep -E "Failed password|Accepted password|Accepted publickey" /var/log/auth.log | tail -n 50
+```
+
+Look for a timeline such as:
+
+```text
+10:15 — Failed SSH login
+10:15 — Failed SSH login
+10:16 — Successful SSH login
+```
+
+This pattern needs investigation, especially if the successful login followed many failures from the same source.
+
+However, verify that the events share the same relevant source, account, and time window before treating them as related.
+
+---
+
+## 9. Build an Event Timeline
+
+Create a simple timeline using the evidence you collected.
+
+| Time | Event | Investigation note |
+|---|---|---|
+| 10:15:01 | Failed SSH | Identify account and source |
+| 10:15:05 | Failed SSH | Check whether source is the same |
+| 10:15:09 | Failed SSH | Assess frequency |
+| 10:16:00 | Successful SSH | Verify account and source |
+
+The times above are examples. Replace them with actual timestamps from your lab.
+
+A timeline helps the SOC analyst understand the sequence of events instead of investigating each alert in isolation.
+
+---
+
+## 10. Check Related User and Process Activity
+
+After identifying a suspicious authentication event, examine relevant endpoint evidence.
+
+Show currently logged-in users:
+
+```bash
+who
+```
+
+Show login sessions and activity:
+
+```bash
+w
+```
+
+Review recent login history:
+
+```bash
+last -n 20
+```
+
+Review current processes:
+
+```bash
+ps aux
+```
+
+Review network connections:
+
+```bash
+sudo ss -tunap
+```
+
+These commands provide supporting context. They do not necessarily prove which process or person caused an earlier event, and some historical details may not be available.
+
+---
+
+## 11. Understand Detection Rules and Correlation
+
+Wazuh includes built-in rules for various authentication events. Custom rules can also be used to identify patterns.
+
+A rule that detects one failed login is different from a rule that correlates several failures within a time window.
+
+Conceptually:
+
+```text
+Failed Login
+     ↓
+Failed Login
+     ↓
+Failed Login
+     ↓
+Repeated Pattern
+     ↓
+Potential Brute-Force Alert
+```
+
+Correlation logic must be configured and tested against the actual event fields and rule IDs produced by your Wazuh installation.
+
+Do not copy a rule that assumes an unverified parent rule ID or source-IP field. Use Wazuh's rule testing tool and documentation before deploying custom correlation logic.
+
+---
+
+## 12. Test a Rule with Wazuh Logtest
+
+If the Wazuh manager is running, use:
+
+```bash
+sudo /var/ossec/bin/wazuh-logtest
+```
+
+Provide a representative authentication log line from your own lab.
+
+Observe:
+
+- Whether the log is decoded
+- Which rule matches
+- The resulting rule ID
+- The alert level
+- The groups associated with the rule
+
+Exit the tool when finished.
+
+`wazuh-logtest` tests how a log is decoded and matched against rules. It does **not** by itself create a live indexed dashboard alert.
+
+If your Wazuh manager or indexer is not working, document the troubleshooting instead of reinstalling the entire lab without diagnosing the issue.
+
+---
+
+## 13. Write a SOC Investigation Report
+
+Use this template for your own evidence:
+
+```text
+Alert Name:
+Repeated SSH Authentication Failures
+
+Host:
+[Your lab hostname]
+
+Source IP:
+[Observed source IP]
+
+Target Username:
+[Observed username]
+
+Time Window:
+[Start time – End time]
+
+Evidence:
+[Log entries and Wazuh rule details]
+
+Related Activity:
+[Successful login, sudo, process, or network events]
+
+Initial Assessment:
+[Expected / Suspicious / Inconclusive]
+
+Reason:
+[Explain what the evidence supports]
+
+Recommended Next Step:
+[Continue investigation, validate with system owner,
+or follow the approved incident-response process]
+```
+
+Never invent an alert, timestamp, source IP, or screenshot. Record only what you actually observed.
+
+---
+
+## 14. Day 26 Practical Challenge 🔎
+
+Using your own lab:
+
+- [ ] Find SSH authentication failures in Linux logs.
+- [ ] Record the username and source IP.
+- [ ] Check the timestamps and number of attempts.
+- [ ] Look for a related successful login.
+- [ ] Search for the corresponding event in Wazuh, if available.
+- [ ] Record the matching rule ID and alert level.
+- [ ] Create an event timeline.
+- [ ] Write an initial assessment with evidence.
+
+### Challenge questions
+
+**Q1. Does one failed SSH login prove brute force?**
+
+No. It can result from ordinary user error or other benign causes.
+
+**Q2. Why is the source IP important?**
+
+It helps identify where the connection originated and correlate related events, although an IP alone does not identify a person.
+
+**Q3. Why investigate a successful login after repeated failures?**
+
+It may indicate that authentication eventually succeeded, but the account, source, timing, and authorization must be verified.
+
+**Q4. Does a Wazuh alert prove a compromise?**
+
+No. An alert is a detection requiring investigation, not proof of a successful attack.
+
+**Q5. What evidence makes the event more concerning?**
+
+Repeated failures, unusual source addresses, multiple targeted accounts, an unexpected successful login, and suspicious follow-up activity can collectively increase concern.
+
+---
+
+## 15. GitHub Folder Structure
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-26/
+    ├── README.md
+    └── screenshots/
+        ├── ssh-authentication-log.png
+        ├── failed-login-events.png
+        ├── wazuh-ssh-event.png
+        ├── wazuh-rule-details.png
+        ├── event-timeline.png
+        └── soc-investigation-report.png
+```
+
+Only include screenshots you actually captured. If Wazuh is unavailable, include Linux log evidence and a clearly labeled troubleshooting note instead.
+
+Reference screenshots using relative paths:
+
+```markdown
+![SSH Authentication Log](screenshots/ssh-authentication-log.png)
+```
+
+---
+
+## 16. Interview Questions
+
+1. What is SSH brute force?
+2. What is the difference between a failed login and a successful login?
+3. Which Linux logs commonly record SSH authentication events?
+4. Which fields are important when investigating a failed login?
+5. Why is event correlation important in a SIEM?
+6. What is the difference between a detection rule and a correlation rule?
+7. What is the purpose of `wazuh-logtest`?
+8. Does a Wazuh alert always mean a system is compromised?
+9. How would you investigate a successful login following repeated failures?
+10. What information belongs in a SOC investigation report?
+
+---
+
+## 17. Day 26 Checklist
+
+- [ ] Understand SSH brute-force behavior
+- [ ] Inspect Linux authentication logs
+- [ ] Identify source IP and username
+- [ ] Review repeated failed logins
+- [ ] Check for a successful login afterward
+- [ ] Search for relevant Wazuh events
+- [ ] Review rule ID and alert level
+- [ ] Test log matching if the manager is available
+- [ ] Build an event timeline
+- [ ] Write an evidence-based SOC report
+- [ ] Capture real screenshots
+- [ ] Upload Day 26 to GitHub
+
+---
+
+## 🔥 What I Learned
+
+I learned how to investigate repeated SSH authentication failures, identify relevant event fields, correlate authentication events, inspect Wazuh detection results, and document findings using a SOC investigation workflow.
+
+> **A good SOC analyst does not simply count failed logins. They correlate events, validate evidence, and determine whether the activity is expected or suspicious.**
