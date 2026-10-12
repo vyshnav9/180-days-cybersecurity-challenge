@@ -1,0 +1,593 @@
+# Day 27 — Wazuh File Integrity Monitoring (FIM) 🔍
+
+## 🎯 Objective
+
+Today I learned how to monitor important Linux files for unexpected changes using Wazuh File Integrity Monitoring.
+
+### Topics covered
+
+- File Integrity Monitoring (FIM)
+- File creation, modification, and deletion
+- Linux file permissions
+- Wazuh FIM configuration
+- Detecting suspicious file changes
+- Alert investigation and SOC reporting
+
+> **Safety:** Perform all experiments only on your own Linux VM or an authorized lab.
+
+---
+
+## 1. What Is File Integrity Monitoring?
+
+File Integrity Monitoring (FIM) is a security technique that detects changes to files and directories.
+
+For example, an attacker who gains access to a system might modify a configuration file, change a script, or add an unexpected file.
+
+FIM helps a security analyst identify these changes and investigate whether they are authorized.
+
+### FIM workflow
+
+```text
+Important File
+      ↓
+Record Its Original State
+      ↓
+File Created / Modified / Deleted
+      ↓
+Wazuh Detects a Change
+      ↓
+SOC Analyst Reviews the Alert
+      ↓
+Determine Whether the Change Is Expected
+```
+
+FIM can monitor file attributes such as permissions, ownership, size, and cryptographic hashes, depending on the configuration.
+
+---
+
+## 2. Why Is FIM Important?
+
+Security teams use FIM to monitor changes to:
+
+- System configuration files
+- Authentication configuration
+- Application configuration
+- Important scripts and executables
+- Files in sensitive directories
+- Files that may indicate persistence or unauthorized modification
+
+Examples of files that may be important on Linux include:
+
+```text
+/etc/passwd
+/etc/group
+/etc/ssh/sshd_config
+/etc/sudoers
+```
+
+These files can affect users, groups, remote access, and privileges. Do not modify these system files for this exercise.
+
+---
+
+## 3. Understand the Wazuh FIM Workflow
+
+```text
+Linux Endpoint
+      ↓
+Wazuh Agent
+      ↓
+File Integrity Monitoring
+      ↓
+File Change Event
+      ↓
+Wazuh Server and Rules
+      ↓
+Alert / Event
+      ↓
+Wazuh Dashboard
+      ↓
+SOC Investigation
+```
+
+Wazuh FIM is implemented by its `syscheck` component. It can monitor configured directories and report changes according to its settings.
+
+**Important:** A detected file change does not automatically mean an attack occurred. Software updates, administrator activity, and normal application operations can also change files.
+
+---
+
+## 4. Check Your Linux Environment
+
+Run these commands on your Ubuntu lab VM:
+
+```bash
+hostname
+```
+
+```bash
+whoami
+```
+
+```bash
+uname -a
+```
+
+Check whether the Wazuh agent is running:
+
+```bash
+sudo systemctl status wazuh-agent
+```
+
+Check recent agent logs:
+
+```bash
+sudo tail -n 50 /var/ossec/logs/ossec.log
+```
+
+If you are using a standalone Wazuh server to monitor itself, the agent may not be installed as a separate endpoint service. Follow the setup that matches your lab.
+
+---
+
+## 5. Understand the FIM Configuration
+
+The Wazuh agent configuration is commonly stored at:
+
+```text
+/var/ossec/etc/ossec.conf
+```
+
+Inspect the file:
+
+```bash
+sudo less /var/ossec/etc/ossec.conf
+```
+
+Look for a section similar to:
+
+```xml
+<syscheck>
+  ...
+</syscheck>
+```
+
+The `syscheck` section controls File Integrity Monitoring settings, including which paths are monitored and how often periodic checks occur.
+
+**Do not replace the entire configuration file.** Preserve existing settings and back up the file before making any changes.
+
+---
+
+## 6. Create a Safe Test Directory
+
+We will use a dedicated lab directory instead of changing system files.
+
+```bash
+mkdir -p ~/fim-lab
+```
+
+Create a test file:
+
+```bash
+echo "Original lab configuration" > ~/fim-lab/test-config.txt
+```
+
+View its contents:
+
+```bash
+cat ~/fim-lab/test-config.txt
+```
+
+Check its metadata:
+
+```bash
+ls -l ~/fim-lab/test-config.txt
+```
+
+Calculate its SHA-256 hash:
+
+```bash
+sha256sum ~/fim-lab/test-config.txt
+```
+
+Save the output. You will compare it with the hash after modifying the file.
+
+---
+
+## 7. Understand File Hashes
+
+A cryptographic hash produces a value derived from file contents.
+
+Example:
+
+```text
+File Contents:
+Original lab configuration
+
+        ↓ SHA-256
+
+Hash:
+[Your actual hash value]
+```
+
+Now modify the file:
+
+```bash
+echo "Updated lab configuration" > ~/fim-lab/test-config.txt
+```
+
+Calculate the hash again:
+
+```bash
+sha256sum ~/fim-lab/test-config.txt
+```
+
+The hash should differ because the file contents changed.
+
+A changed hash proves that the contents differ; it does not, by itself, prove that the modification was malicious.
+
+---
+
+## 8. Configure Wazuh to Monitor the Test Directory
+
+This step is optional if you already have FIM enabled for the directory.
+
+First back up the agent configuration:
+
+```bash
+sudo cp /var/ossec/etc/ossec.conf \
+/var/ossec/etc/ossec.conf.bak
+```
+
+Open the configuration:
+
+```bash
+sudo nano /var/ossec/etc/ossec.conf
+```
+
+Inside the existing `<syscheck>` section, add the following entry if it is not already present:
+
+```xml
+<directories check_all="yes">/home/YOUR_USERNAME/fim-lab</directories>
+```
+
+Replace `YOUR_USERNAME` with your actual Linux username.
+
+For example, if your username is `ubuntu`, use:
+
+```xml
+<directories check_all="yes">/home/ubuntu/fim-lab</directories>
+```
+
+Keep the entry inside the existing `<syscheck>` section. Do not add a second outer `<syscheck>` block without checking the existing configuration.
+
+The `check_all` setting enables monitoring of supported file attributes. Verify the behavior against the Wazuh version and configuration you are using.
+
+Save the file and exit the editor.
+
+---
+
+## 9. Restart the Agent if You Changed Its Configuration
+
+If the configuration was edited locally, run:
+
+```bash
+sudo systemctl restart wazuh-agent
+```
+
+Check its status:
+
+```bash
+sudo systemctl status wazuh-agent
+```
+
+Inspect the logs:
+
+```bash
+sudo tail -n 50 /var/ossec/logs/ossec.log
+```
+
+If Wazuh reports a configuration error, restore the backup or correct the XML before proceeding.
+
+If your endpoint configuration is centrally managed, make changes using your approved Wazuh management method instead.
+
+---
+
+## 10. Test File Modification Detection
+
+After confirming the directory is configured for monitoring, modify the test file:
+
+```bash
+echo "Day 27 modification test" >> ~/fim-lab/test-config.txt
+```
+
+Check the file:
+
+```bash
+cat ~/fim-lab/test-config.txt
+```
+
+Now inspect Wazuh events in the dashboard.
+
+Search for events associated with:
+
+```text
+fim-lab
+test-config.txt
+syscheck
+```
+
+Depending on your configuration, Wazuh may report an initial file addition, a modification, or both.
+
+Periodic monitoring may take time to detect a change. Real-time monitoring also depends on the configured directory and system support.
+
+**If no event appears:** check that the correct endpoint is active, the directory is monitored, the agent is running, and the event has reached Wazuh. Do not invent an alert for your report.
+
+---
+
+## 11. Test File Creation
+
+Create another test file:
+
+```bash
+echo "New file created for FIM testing" > ~/fim-lab/new-file.txt
+```
+
+Inspect the directory:
+
+```bash
+ls -la ~/fim-lab
+```
+
+Check Wazuh for an event concerning `new-file.txt`.
+
+Record whether the event was detected and note the event details shown by your installation.
+
+---
+
+## 12. Test File Deletion
+
+Delete only the test file:
+
+```bash
+rm ~/fim-lab/new-file.txt
+```
+
+Confirm that it is gone:
+
+```bash
+ls -la ~/fim-lab
+```
+
+Check the Wazuh dashboard for a deletion event.
+
+Deletion detection depends on the monitoring configuration and collection behavior. If the event does not appear, document the result and troubleshoot it.
+
+**Never use this exercise to delete system files or files belonging to another user.**
+
+---
+
+## 13. Investigate a FIM Alert Like a SOC Analyst
+
+When Wazuh reports a file change, collect:
+
+| Field | What to record |
+|---|---|
+| Host | Endpoint where the change occurred |
+| File path | Exact monitored file |
+| Event type | Added, modified, or deleted |
+| Timestamp | When the change was recorded |
+| User | User context, if available |
+| File attributes | Reported permissions, owner, size, or hash |
+| Rule ID | Matching Wazuh detection rule |
+| Alert level | Severity shown by Wazuh |
+
+The fields available depend on the event and your Wazuh version.
+
+Ask these questions:
+
+1. Was the change expected?
+2. Did an administrator or software update cause it?
+3. Is the file in a sensitive directory?
+4. Did the file's contents or permissions change?
+5. Are there related authentication or privilege-escalation events?
+6. Does the evidence justify escalation?
+
+---
+
+## 14. Correlate FIM With Other Security Events
+
+A file modification is more concerning when combined with other unusual activity.
+
+Example investigation:
+
+```text
+Unexpected SSH Authentication
+          ↓
+Unexpected Privileged Activity
+          ↓
+Sensitive File Modified
+          ↓
+Review User, Time, and File Details
+          ↓
+Assess Whether Events Are Related
+```
+
+This is a hypothesis to investigate, not proof that one event caused another.
+
+Correlate timestamps, users, source addresses, process information, and other available evidence before drawing a conclusion.
+
+---
+
+## 15. Write a FIM Investigation Report
+
+Use this template with your actual findings:
+
+```text
+Alert Name:
+File Integrity Monitoring Event
+
+Host:
+[Your lab hostname]
+
+File Path:
+[Observed path]
+
+Event Type:
+[Added / Modified / Deleted]
+
+Timestamp:
+[Observed timestamp]
+
+Rule ID:
+[Observed rule ID, if available]
+
+File Hash:
+[Observed hash, if available]
+
+Investigation:
+[Describe what changed and the evidence collected]
+
+Assessment:
+[Expected / Suspicious / Inconclusive]
+
+Reason:
+[Explain why the evidence supports your assessment]
+
+Recommended Action:
+[Document, validate with the owner, or escalate according
+to the approved incident-response process]
+```
+
+For this controlled exercise, if you intentionally modified the test file and verified the corresponding event, your assessment can be:
+
+```text
+Assessment:
+Expected Lab Activity
+
+Reason:
+The file change was intentionally generated during
+an authorized FIM test.
+```
+
+---
+
+## 16. Troubleshooting Checklist
+
+If no FIM event appears:
+
+- Confirm that the Wazuh agent is active.
+- Verify the correct endpoint is selected in the dashboard.
+- Check that the test directory is included in the `syscheck` configuration.
+- Verify that the XML configuration is valid.
+- Check `/var/ossec/logs/ossec.log` for errors.
+- Allow for the configured scan interval.
+- Verify that events are reaching the Wazuh server and matching rules.
+- Check the Wazuh dashboard's available event filters.
+
+If the Wazuh indexer or dashboard is still unavailable, complete the local hash comparison and file-change tests, then record the unresolved central-monitoring issue. Fix the existing installation before setting up another instance.
+
+---
+
+## 17. Day 27 Practical Challenge 🔥
+
+Complete these tasks on your own lab:
+
+- [ ] Create the `fim-lab` directory.
+- [ ] Create `test-config.txt`.
+- [ ] Record its original SHA-256 hash.
+- [ ] Configure Wazuh FIM for the test directory.
+- [ ] Modify the test file.
+- [ ] Check for a modification event.
+- [ ] Create a second file.
+- [ ] Check for an addition event.
+- [ ] Delete only the test file.
+- [ ] Check for a deletion event.
+- [ ] Record actual rule IDs and alert details, if available.
+- [ ] Write a FIM investigation report.
+- [ ] Capture genuine screenshots.
+
+### Challenge questions
+
+**Q1. What is File Integrity Monitoring?**
+
+It monitors selected files and directories for changes to their contents or attributes.
+
+**Q2. Why are cryptographic hashes useful?**
+
+They help compare file contents and identify changes.
+
+**Q3. Does every file change indicate an attack?**
+
+No. Legitimate administration and software updates can also modify files.
+
+**Q4. What is the purpose of Wazuh `syscheck`?**
+
+It provides Wazuh's file integrity monitoring functionality.
+
+**Q5. Why correlate a FIM event with authentication logs?**
+
+To investigate whether a file change may be related to unexpected account activity or another security event.
+
+---
+
+## 18. GitHub Folder Structure
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-27/
+    ├── README.md
+    └── screenshots/
+        ├── fim-lab-directory.png
+        ├── original-file-hash.png
+        ├── modified-file-hash.png
+        ├── wazuh-fim-configuration.png
+        ├── file-modification-event.png
+        ├── file-creation-event.png
+        └── fim-investigation-report.png
+```
+
+Use only screenshots you actually captured. If a Wazuh event was not generated or the dashboard is unavailable, label the corresponding step as incomplete or under investigation.
+
+To display a screenshot in your README:
+
+```markdown
+![File Modification Event](screenshots/file-modification-event.png)
+```
+
+---
+
+## 19. Interview Questions
+
+1. What is File Integrity Monitoring?
+2. What is the purpose of Wazuh `syscheck`?
+3. What is a cryptographic hash?
+4. What is the difference between file modification and file creation?
+5. Why should sensitive configuration files be monitored?
+6. Does FIM prove that a file change is malicious?
+7. How would you investigate an unexpected change to `/etc/ssh/sshd_config`?
+8. How can authentication logs help investigate a FIM alert?
+9. What information should a SOC analyst include in a FIM report?
+10. What would you check if Wazuh does not report a file change?
+
+---
+
+## 20. Day 27 Checklist
+
+- [ ] Understand FIM
+- [ ] Understand hashes and file attributes
+- [ ] Create a dedicated test directory
+- [ ] Configure Wazuh FIM
+- [ ] Test modification detection
+- [ ] Test file creation detection
+- [ ] Test file deletion detection
+- [ ] Review Wazuh events
+- [ ] Investigate file changes
+- [ ] Write a SOC report
+- [ ] Capture real screenshots
+- [ ] Upload Day 27 to GitHub
+
+---
+
+## 🔥 What I Learned
+
+I learned how File Integrity Monitoring helps identify changes to monitored Linux files, how to configure a safe test directory, how to compare file hashes, and how to investigate file-change events using a SOC workflow.
+
+> **A file change is evidence to investigate—not automatic proof of compromise.**
