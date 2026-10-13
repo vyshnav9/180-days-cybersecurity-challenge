@@ -1,0 +1,505 @@
+# Day 28 — Linux Authentication Log Analysis & Suspicious Login Detection 🔍
+
+## 🎯 Objective
+
+Today I practiced analyzing Linux authentication logs to identify suspicious login activity and investigate authentication events from a SOC analyst's perspective.
+
+### Topics covered
+
+- Linux authentication logs
+- Failed and successful logins
+- SSH login investigation
+- Username and source IP analysis
+- Sudo activity monitoring
+- Suspicious login patterns
+- Event timeline creation
+- SOC investigation reporting
+
+> **Safety:** Perform all exercises on your own Linux VM or an authorized lab.
+
+---
+
+## 1. What Are Authentication Logs?
+
+Authentication logs record security-related events associated with users logging in, authenticating, and sometimes using elevated privileges.
+
+These logs help SOC analysts investigate:
+
+- Repeated failed login attempts
+- Successful logins at unusual times
+- Attempts to access invalid usernames
+- Unexpected SSH connections
+- Suspicious use of `sudo`
+
+On Ubuntu, authentication events are commonly stored in:
+
+```text
+/var/log/auth.log
+```
+
+Some Linux distributions use the system journal instead.
+
+---
+
+## 2. Understand the Investigation Workflow
+
+```text
+Authentication Logs
+        ↓
+Identify Login Events
+        ↓
+Extract User, IP and Timestamp
+        ↓
+Look for Repeated Failures
+        ↓
+Check for Successful Logins
+        ↓
+Correlate Sudo and Session Activity
+        ↓
+Write SOC Investigation Report
+```
+
+---
+
+## 3. Inspect Authentication Logs
+
+On your Ubuntu lab VM, run:
+
+```bash
+sudo tail -n 50 /var/log/auth.log
+```
+
+This displays the most recent 50 lines.
+
+Search for failed-password events:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log | tail -n 20
+```
+
+Search for invalid usernames:
+
+```bash
+sudo grep "Invalid user" /var/log/auth.log | tail -n 20
+```
+
+Search for successful SSH authentication:
+
+```bash
+sudo grep -E "Accepted password|Accepted publickey" /var/log/auth.log | tail -n 20
+```
+
+If `/var/log/auth.log` is unavailable, try:
+
+```bash
+sudo journalctl --since "24 hours ago" | grep -Ei "sshd|ssh"
+```
+
+---
+
+## 4. Identify Important Log Fields
+
+Consider this illustrative event:
+
+```text
+Oct 14 00:15:10 ubuntu-lab sshd[1234]:
+Failed password for invalid user testuser
+from 192.0.2.25 port 54321 ssh2
+```
+
+Important fields:
+
+| Field | Example | Meaning |
+|---|---|---|
+| Timestamp | Oct 14 00:15:10 | Event time |
+| Host | ubuntu-lab | System generating the event |
+| Process | sshd | SSH service |
+| Username | testuser | Account targeted |
+| Source IP | 192.0.2.25 | Reported connection source |
+| Event | Failed password | Authentication failed |
+
+The IP address in this example belongs to a documentation-only address range. It is not evidence from a real attack.
+
+---
+
+## 5. Count Failed SSH Attempts
+
+Count failed-password entries:
+
+```bash
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+Count invalid-user events:
+
+```bash
+sudo grep -c "Invalid user" /var/log/auth.log
+```
+
+These commands count matching log lines in the current file. They do not necessarily count unique attackers or distinct login sessions.
+
+A high count is a reason to investigate, not automatic proof of brute force.
+
+---
+
+## 6. Find Repeated Attempts From a Source IP
+
+Extract source addresses from common SSH failure messages:
+
+```bash
+sudo grep "Failed password" /var/log/auth.log \
+| grep -oE 'from ([0-9]{1,3}\.){3}[0-9]{1,3}' \
+| awk '{print $2}' \
+| sort \
+| uniq -c \
+| sort -nr
+```
+
+This produces a count of matching log entries grouped by source IPv4 address.
+
+Example output:
+
+```text
+5 192.0.2.25
+2 192.0.2.30
+1 127.0.0.1
+```
+
+These values are examples only. Use the actual output from your own machine.
+
+**Investigation questions:**
+
+- Is one source responsible for many failures?
+- Are several usernames being targeted?
+- Are the attempts concentrated within a short time window?
+- Is the source expected in your lab?
+
+---
+
+## 7. Compare Failed and Successful Logins
+
+Search both types of events:
+
+```bash
+sudo grep -E "Failed password|Accepted password|Accepted publickey" \
+/var/log/auth.log | tail -n 50
+```
+
+Look for patterns such as:
+
+```text
+00:15:01 — Failed login
+00:15:05 — Failed login
+00:15:09 — Failed login
+00:16:00 — Successful login
+```
+
+This is an illustrative timeline.
+
+If you find this pattern in your logs, check whether the successful event involves the same account, source IP, and relevant time window.
+
+A successful login after repeated failures can be important, but it may also be legitimate activity. Validate the context before drawing a conclusion.
+
+---
+
+## 8. Monitor Sudo Activity
+
+Unexpected privileged activity may be relevant after an unusual login.
+
+Search the authentication log:
+
+```bash
+sudo grep "sudo" /var/log/auth.log | tail -n 30
+```
+
+Look for details such as:
+
+- User who invoked `sudo`
+- Command executed
+- Timestamp
+- Whether the action was expected
+
+Remember that `sudo` activity does not automatically indicate malicious behavior. Administrators and normal users may use it legitimately.
+
+---
+
+## 9. Check Recent Login Sessions
+
+Run:
+
+```bash
+who
+```
+
+Displays currently logged-in users.
+
+```bash
+w
+```
+
+Displays logged-in users and session activity.
+
+```bash
+last -n 20
+```
+
+Displays recent login records when the system has the relevant accounting data.
+
+These commands provide different perspectives. Current sessions and historical login records may not contain every detail required to reconstruct an incident.
+
+---
+
+## 10. Generate a Safe Test Event
+
+If SSH is installed and running on your own Ubuntu VM, you can generate a controlled local test event:
+
+```bash
+ssh invalid-lab-user@localhost
+```
+
+The invalid username should fail to authenticate if it does not exist.
+
+Then inspect the logs:
+
+```bash
+sudo grep -Ei "Invalid user|Failed password" /var/log/auth.log | tail -n 10
+```
+
+This test may generate an invalid-user event rather than a failed-password event, depending on the SSH server configuration.
+
+Do not use password-guessing tools or test against systems you do not own or have explicit authorization to assess.
+
+---
+
+## 11. Optional Python Log Analysis
+
+Create a file named `analyze_auth_logs.py`:
+
+```python
+from collections import Counter
+from pathlib import Path
+import re
+
+log_path = Path("/var/log/auth.log")
+
+if not log_path.exists():
+    print("Authentication log not found.")
+    print("Try journalctl or check your Linux distribution.")
+    raise SystemExit(1)
+
+failed_count = 0
+invalid_user_count = 0
+source_ips = Counter()
+
+with log_path.open(errors="replace") as log_file:
+    for line in log_file:
+        if "Failed password" in line:
+            failed_count += 1
+
+            match = re.search(
+                r"\bfrom ((?:\d{1,3}\.){3}\d{1,3})\b",
+                line
+            )
+
+            if match:
+                source_ips[match.group(1)] += 1
+
+        if "Invalid user" in line:
+            invalid_user_count += 1
+
+print("Authentication Log Summary")
+print("--------------------------")
+print(f"Failed-password events: {failed_count}")
+print(f"Invalid-user events: {invalid_user_count}")
+
+print("\nTop source IPs in failed-password events:")
+
+for ip, count in source_ips.most_common(10):
+    print(f"{ip}: {count}")
+```
+
+Run it:
+
+```bash
+python3 analyze_auth_logs.py
+```
+
+If permissions prevent reading the log, run:
+
+```bash
+sudo python3 analyze_auth_logs.py
+```
+
+This beginner script summarizes common IPv4 SSH failure events. It is not a complete intrusion detection system: it does not normalize time windows, account for every log format, or determine whether activity is malicious.
+
+---
+
+## 12. Connect Your Findings to Wazuh
+
+When your Wazuh Indexer and Dashboard are working again:
+
+1. Confirm that the endpoint agent is active.
+2. Confirm that authentication logs are being collected.
+3. Search the Wazuh security events for SSH authentication failures.
+4. Inspect the matching rule ID and alert level.
+5. Compare Wazuh events with the original Linux logs.
+6. Record any missing events or collection problems.
+
+Your earlier Indexer issue may prevent the dashboard from displaying events even when the Linux logs are available.
+
+Do not claim that Wazuh detected an event unless you have verified it in the actual event data.
+
+---
+
+## 13. SOC Investigation Scenario
+
+### Scenario
+
+An analyst observes repeated SSH authentication failures on a Linux server.
+
+The analyst must determine whether the events represent expected activity, suspicious behavior, or a potential incident.
+
+Investigate:
+
+```text
+1. Which host generated the events?
+2. Which usernames were targeted?
+3. Which source IPs were involved?
+4. How many failures occurred?
+5. Did a successful login follow?
+6. Was sudo used afterward?
+7. Is there supporting evidence of suspicious activity?
+```
+
+Build a timeline from the available logs and explain the reasoning behind your assessment.
+
+---
+
+## 14. SOC Investigation Report Template
+
+```text
+Alert / Investigation Name:
+SSH Authentication Activity
+
+Host:
+[Observed hostname]
+
+Time Window:
+[Start time – End time]
+
+Target Usernames:
+[Observed usernames]
+
+Source IPs:
+[Observed source addresses]
+
+Failed Attempts:
+[Observed count]
+
+Successful Login:
+[Yes / No / Unknown]
+
+Related Sudo Activity:
+[Observed details or Unknown]
+
+Evidence:
+[Relevant log entries and timestamps]
+
+Initial Assessment:
+[Expected / Suspicious / Inconclusive]
+
+Reason:
+[Explain what the evidence supports]
+
+Recommended Next Step:
+[Validate activity, continue investigation,
+or follow the approved incident-response process]
+```
+
+Never invent timestamps, IP addresses, counts, or alerts. Clearly distinguish facts from hypotheses.
+
+---
+
+## 15. Day 28 Practical Challenge 🔥
+
+- [ ] Inspect Linux authentication logs.
+- [ ] Identify failed-password events.
+- [ ] Identify invalid-user events.
+- [ ] Count matching failed-login entries.
+- [ ] Group failures by source IPv4 address.
+- [ ] Search for successful SSH logins.
+- [ ] Review sudo activity.
+- [ ] Check recent login sessions.
+- [ ] Run the Python log-analysis script.
+- [ ] Build an event timeline.
+- [ ] Write an evidence-based SOC report.
+- [ ] Check Wazuh events if the dashboard is available.
+- [ ] Capture genuine screenshots.
+
+### Challenge questions
+
+**Q1. Which Linux file commonly stores Ubuntu authentication logs?**
+
+`/var/log/auth.log`
+
+**Q2. Does a high failed-login count prove brute force?**
+
+No. The source, time window, targeted accounts, and surrounding activity must be investigated.
+
+**Q3. Why investigate a successful login after repeated failures?**
+
+It may be related to the preceding failures and deserves validation against the same account, source, and timeline.
+
+**Q4. What does `uniq -c` do in the source-IP pipeline?**
+
+It counts adjacent identical lines. Sorting the addresses first groups identical values together.
+
+**Q5. Why analyze original logs as well as Wazuh alerts?**
+
+Original logs help validate the event details and distinguish a missing collection or detection problem from the absence of the underlying event.
+
+---
+
+## 16. GitHub Folder Structure
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-28/
+    ├── README.md
+    ├── analyze_auth_logs.py
+    └── screenshots/
+        ├── authentication-log.png
+        ├── failed-login-analysis.png
+        ├── source-ip-summary.png
+        ├── python-analysis-output.png
+        └── soc-investigation-report.png
+```
+
+Reference your actual screenshots using relative paths:
+
+```markdown
+![Authentication Log Analysis](screenshots/authentication-log.png)
+```
+
+---
+
+## 17. Interview Questions
+
+1. What information can Linux authentication logs provide?
+2. How would you investigate repeated SSH failures?
+3. How can you group failed logins by source IP?
+4. What is the difference between an invalid-user event and a failed-password event?
+5. Why is a successful login after repeated failures worth investigating?
+6. How can sudo logs support an authentication investigation?
+7. What is the difference between an event and an incident?
+8. How would you troubleshoot missing authentication events in Wazuh?
+9. What limitations should you consider when analyzing raw logs?
+10. How would you write a clear SOC investigation report?
+
+---
+
+## 🔥 What I Learned
+
+I learned how to inspect Linux authentication logs, identify repeated SSH failures, summarize source IP activity, correlate authentication and sudo events, and create an evidence-based SOC investigation report.
+
+> **A strong SOC investigation connects individual events into a timeline and explains what the evidence does—and does not—prove.**
