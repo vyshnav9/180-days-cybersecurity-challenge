@@ -1,0 +1,434 @@
+# Day 29 — Wazuh Linux Persistence Detection & Startup Monitoring 🛡️
+
+## 🎯 Objective
+
+Today I practiced using Wazuh to investigate Linux persistence mechanisms and unexpected startup changes from a SOC analyst's perspective.
+
+### Topics covered
+
+- Wazuh File Integrity Monitoring (FIM)
+- Linux cron jobs
+- systemd services and timers
+- SSH authorized keys
+- File change detection
+- Security event investigation
+- SOC incident reporting
+
+> **Safety:** Use only your own Linux VM or an authorized lab. Do not create unauthorized persistence or modify critical system files.
+
+---
+
+## 1. Understand the Detection Workflow
+
+```text
+Linux Endpoint
+      ↓
+Wazuh Agent
+      ↓
+FIM / Log Collection
+      ↓
+Wazuh Server Rules
+      ↓
+Wazuh Indexer
+      ↓
+Wazuh Dashboard
+      ↓
+SOC Investigation
+```
+
+Wazuh can report changes to monitored files. It does not automatically classify every cron job or service as malicious. The analyst must investigate the change and its context.
+
+---
+
+## 2. Check Your Wazuh Agent
+
+On the monitored Ubuntu endpoint, run:
+
+```bash
+sudo systemctl status wazuh-agent --no-pager
+```
+
+Check recent agent logs:
+
+```bash
+sudo tail -n 50 /var/ossec/logs/ossec.log
+```
+
+Confirm that the endpoint is connected to your Wazuh server.
+
+If your Indexer is still failing, continue with local evidence collection, but do not claim that dashboard alerts were verified.
+
+---
+
+## 3. Inspect Linux Persistence Locations
+
+Run the following commands on your Ubuntu endpoint.
+
+### Cron jobs
+
+```bash
+crontab -l
+```
+
+```bash
+sudo crontab -l
+```
+
+```bash
+ls -la /etc/cron.d/
+```
+
+### systemd services
+
+```bash
+systemctl list-unit-files --type=service
+```
+
+### systemd timers
+
+```bash
+systemctl list-timers --all
+```
+
+### SSH authorized keys
+
+```bash
+cat ~/.ssh/authorized_keys
+```
+
+If the file does not exist, that is not necessarily an error.
+
+These commands help you establish what is currently configured. Wazuh FIM will only detect changes to paths that are appropriately monitored.
+
+---
+
+## 4. Check Wazuh FIM Configuration
+
+On the endpoint, inspect:
+
+```bash
+sudo grep -A30 -B5 '<syscheck>' /var/ossec/etc/ossec.conf
+```
+
+Look for the `<syscheck>` section and its monitored directories.
+
+Wazuh FIM commonly monitors configured paths such as `/etc`, depending on the installation and configuration. Do not assume every persistence location is covered.
+
+If you change the configuration, back it up first and preserve the existing XML structure.
+
+```bash
+sudo cp /var/ossec/etc/ossec.conf \
+/var/ossec/etc/ossec.conf.bak
+```
+
+---
+
+## 5. Configure a Safe FIM Test Directory
+
+We will monitor a test directory instead of changing real startup mechanisms.
+
+Create the directory:
+
+```bash
+mkdir -p ~/wazuh-fim-lab
+```
+
+Create a test file:
+
+```bash
+echo "Original configuration" > ~/wazuh-fim-lab/test.txt
+```
+
+Check its hash:
+
+```bash
+sha256sum ~/wazuh-fim-lab/test.txt
+```
+
+Find your username:
+
+```bash
+whoami
+```
+
+Edit the Wazuh agent configuration:
+
+```bash
+sudo nano /var/ossec/etc/ossec.conf
+```
+
+Inside the existing `<syscheck>` section, add a monitored directory entry, replacing `YOUR_USERNAME`:
+
+```xml
+<directories check_all="yes">/home/YOUR_USERNAME/wazuh-fim-lab</directories>
+```
+
+Do not add a duplicate `<syscheck>` section. If the directory is already monitored, you do not need to add it again.
+
+Save the configuration.
+
+If you made a local configuration change, restart the agent:
+
+```bash
+sudo systemctl restart wazuh-agent
+```
+
+Verify the service:
+
+```bash
+sudo systemctl status wazuh-agent --no-pager
+```
+
+---
+
+## 6. Generate a File Modification Event
+
+Modify the test file:
+
+```bash
+echo "Day 29 modification test" >> ~/wazuh-fim-lab/test.txt
+```
+
+Compare its hash:
+
+```bash
+sha256sum ~/wazuh-fim-lab/test.txt
+```
+
+The hash should change because the file contents changed.
+
+Now wait for the configured monitoring interval or the real-time monitoring mechanism, if enabled.
+
+---
+
+## 7. Find the Event in Wazuh Dashboard
+
+When your Wazuh Indexer and Dashboard are operational:
+
+1. Open the Wazuh Dashboard.
+2. Navigate to the security events or threat-detection view available in your version.
+3. Search for `test.txt` or `wazuh-fim-lab`.
+4. Inspect the matching file integrity event.
+5. Record the event details.
+
+Capture these fields if available:
+
+```text
+Agent / Host:
+File Path:
+Event Type:
+Timestamp:
+Rule ID:
+Alert Level:
+Reported File Attributes:
+```
+
+Possible event types include file addition or modification. The exact event depends on when the file was first scanned and how monitoring is configured.
+
+**Important:** Editing a file locally does not guarantee a dashboard alert. Verify that the path is monitored, the agent is connected, and the event reaches the manager and indexer.
+
+---
+
+## 8. Investigate Cron and systemd Changes
+
+Review the existing cron and service configuration from Step 3.
+
+If you find an unfamiliar item, record:
+
+- Full configuration path
+- Owner and permissions
+- Command or executable path
+- Modification timestamp
+- Whether the owner confirms it is authorized
+
+Do not create a suspicious cron job or systemd service just to generate an alert.
+
+Wazuh FIM may report changes to these configurations if their paths are monitored, but detecting a file change is different from understanding what the configuration does.
+
+---
+
+## 9. Investigate SSH Authorized Key Changes
+
+Check your own account's authorized keys:
+
+```bash
+ls -l ~/.ssh/authorized_keys
+```
+
+If present, inspect the public-key entries locally:
+
+```bash
+cat ~/.ssh/authorized_keys
+```
+
+Never upload private keys or authentication secrets to GitHub.
+
+If the file changes and is covered by FIM, inspect the event and verify whether the change was authorized.
+
+A newly added key can be legitimate administration or a potential unauthorized-access indicator. Context matters.
+
+---
+
+## 10. Correlate FIM With Authentication Events
+
+Search the Ubuntu authentication log:
+
+```bash
+sudo grep -Ei "Accepted|Failed password|Invalid user" \
+/var/log/auth.log | tail -n 50
+```
+
+Compare authentication events with the file-change timeline.
+
+```text
+Unexpected Login
+       ↓
+Unexpected Privileged Activity
+       ↓
+Sensitive File Change
+       ↓
+Correlate Time and Evidence
+       ↓
+SOC Assessment
+```
+
+This is an investigation hypothesis, not proof that the events are connected. Verify the timestamps, users, source addresses, and other available evidence.
+
+---
+
+## 11. Troubleshoot Missing Wazuh Alerts
+
+If the FIM event does not appear:
+
+1. Confirm the Wazuh agent is running.
+2. Check the agent logs.
+3. Verify that the directory is monitored.
+4. Confirm that the endpoint is connected to the correct Wazuh server.
+5. Allow for the configured scan interval.
+6. Check whether the manager is receiving events.
+7. Verify that the Indexer and Dashboard are healthy.
+
+Useful commands:
+
+```bash
+sudo systemctl status wazuh-agent --no-pager
+```
+
+```bash
+sudo tail -n 100 /var/ossec/logs/ossec.log
+```
+
+On the Wazuh server, check:
+
+```bash
+sudo systemctl status wazuh-manager --no-pager
+```
+
+On the Indexer VM:
+
+```bash
+sudo systemctl status wazuh-indexer --no-pager
+```
+
+Since you previously reported that the Indexer service had failed, resolve that issue before expecting the Dashboard to show newly collected events.
+
+---
+
+## 12. SOC Investigation Report
+
+Use this template with evidence from your own lab:
+
+```text
+Investigation:
+Linux Persistence / File Integrity Monitoring
+
+Host:
+[Observed endpoint]
+
+File or Configuration:
+[Observed path]
+
+Event Type:
+[Added / Modified / Deleted / No event observed]
+
+Timestamp:
+[Actual timestamp, if available]
+
+Wazuh Rule ID:
+[Actual rule ID, if available]
+
+Evidence:
+[Logs, file metadata, and event details]
+
+Assessment:
+[Expected / Suspicious / Inconclusive]
+
+Reason:
+[Explain what the evidence supports]
+
+Next Step:
+[Validate with owner, continue investigation,
+or follow approved incident-response procedures]
+```
+
+Do not invent alert details. If your Indexer is unavailable, record that the dashboard validation is pending.
+
+---
+
+## 13. Day 29 Practical Challenge
+
+- [ ] Verify Wazuh agent status.
+- [ ] Inspect cron jobs and systemd timers.
+- [ ] Review SSH authorized keys safely.
+- [ ] Verify FIM configuration.
+- [ ] Create a dedicated test directory.
+- [ ] Modify a test file.
+- [ ] Compare file hashes.
+- [ ] Search for the corresponding Wazuh event.
+- [ ] Correlate relevant authentication events.
+- [ ] Write an investigation report.
+- [ ] Capture genuine screenshots.
+- [ ] Upload Day 29 to GitHub.
+
+### Interview questions
+
+1. What is Linux persistence?
+2. What is Wazuh File Integrity Monitoring?
+3. What is the purpose of the `syscheck` component?
+4. Can FIM detect a change to every file automatically?
+5. How would you investigate an unexpected SSH authorized key?
+6. How would you correlate a file-change alert with authentication logs?
+7. Does a FIM alert prove malicious activity?
+8. How would you troubleshoot a missing Wazuh alert?
+
+---
+
+## 14. GitHub Folder Structure
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-29/
+    ├── README.md
+    └── screenshots/
+        ├── wazuh-agent-status.png
+        ├── fim-configuration.png
+        ├── test-file-hash.png
+        ├── fim-file-change-event.png
+        └── soc-investigation-report.png
+```
+
+Use only screenshots you actually captured. Hide sensitive information before uploading them.
+
+Example relative image link:
+
+```markdown
+![Wazuh FIM Event](screenshots/fim-file-change-event.png)
+```
+
+---
+
+## 🔥 What I Learned
+
+I learned how Wazuh FIM can help detect changes to monitored Linux files, how to investigate startup-related configuration, how to correlate file changes with authentication events, and how to document findings in a SOC investigation report.
+
+> **Detecting a change is only the beginning. A SOC analyst must investigate whether it was authorized and what it means.**
