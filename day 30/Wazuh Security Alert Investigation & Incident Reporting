@@ -1,0 +1,158 @@
+# Day 30 — Wazuh Security Alert Investigation & Incident Reporting
+
+## 🎯 Objective
+- Understand how a SOC analyst investigates security alerts.
+- Learn to identify suspicious activity from logs.
+- Correlate timestamps, source IPs, usernames, and event details.
+- Create a basic incident investigation report.
+- Practice with Wazuh when the Indexer and Dashboard are operational.
+
+## 🧰 Tools Used
+- Wazuh SIEM
+- Linux Ubuntu
+- Linux authentication logs
+- Terminal commands
+- GitHub for documentation
+
+## 1. Check Wazuh Agent Status
+
+Run on the Linux machine where the Wazuh agent is installed:
+
+```bash
+sudo systemctl status wazuh-agent --no-pager
+```
+
+Check recent agent logs:
+
+```bash
+sudo tail -n 50 /var/ossec/logs/ossec.log
+```
+
+Record whether the agent is active and whether any connection errors appear.
+
+## 2. Review Linux Authentication Logs
+
+On Ubuntu, inspect recent authentication messages:
+
+```bash
+sudo tail -n 50 /var/log/auth.log
+```
+
+Search for failed SSH authentication attempts:
+
+```bash
+sudo grep -i "failed password" /var/log/auth.log | tail -n 20
+```
+
+Search for successful SSH logins:
+
+```bash
+sudo grep -i "accepted" /var/log/auth.log | tail -n 20
+```
+
+**What to investigate:**
+- Are there repeated failed login attempts?
+- Do multiple failures come from the same source IP?
+- Is a successful login recorded after repeated failures?
+- Are the usernames and timestamps consistent with expected activity?
+
+A failed login alone does not prove an attack. Investigate the context before drawing a conclusion.
+
+## 3. Prepare a Safe Investigation Sample
+
+If you cannot access the Wazuh Dashboard, use the authentication logs already available on your own Linux machine.
+
+Extract the latest failed-login entries:
+
+```bash
+sudo grep -i "failed password" /var/log/auth.log | tail -n 10
+```
+
+Record the following fields when available:
+
+| Field | What to record |
+|---|---|
+| Timestamp | When the event occurred |
+| Username | Account involved |
+| Source IP | Origin of the connection |
+| Event type | Failed or successful login |
+| Frequency | Number of repeated attempts |
+| Assessment | Expected, suspicious, or inconclusive |
+
+Do not publish public IP addresses, usernames, or other sensitive log information in your GitHub screenshots.
+
+## 4. Investigate an Alert in Wazuh
+
+**Complete this section after the Indexer is working.**
+
+1. Open your Wazuh Dashboard.
+2. Navigate to **Threat Hunting** or the alerts view available in your installed version.
+3. Set an appropriate time range.
+4. Search for authentication-related alerts.
+5. Open an alert and inspect its rule description, timestamp, agent, and event fields.
+6. Compare the alert with the underlying Linux authentication logs.
+7. Record your findings without assuming that every alert represents a confirmed incident.
+
+If the Dashboard still cannot load, write **Pending — Indexer unavailable**. Do not claim an alert was detected unless you actually verify it.
+
+## 5. Create an Incident Report
+
+Use this template for an event you genuinely investigated:
+
+### Incident Investigation Report
+
+- **Incident ID:** LAB-030
+- **Date and time:** [Enter observed timestamp]
+- **Affected host:** [Enter lab hostname]
+- **Alert type:** [Enter observed event]
+- **Source IP:** [Enter value if available]
+- **Evidence:** [Log entry or verified Wazuh alert]
+- **Investigation:** [Describe what you checked]
+- **Severity:** [Low / Medium / High, with justification]
+- **Conclusion:** [Expected activity / Suspicious / Inconclusive]
+- **Recommended action:** [Monitor, validate with the user, or escalate]
+
+Never invent evidence or mark an event as malicious without sufficient support.
+
+## 6. Key Learnings
+
+- A SIEM alert is a starting point for investigation, not a final verdict.
+- Correlating events helps establish a clearer timeline.
+- Authentication logs can reveal repeated failures and successful logins.
+- Good incident reports separate observed facts from assumptions.
+- SIEM availability depends on its underlying services, including the Indexer.
+
+## 7. GitHub Checklist
+
+- [ ] Checked Wazuh agent status.
+- [ ] Reviewed Linux authentication logs.
+- [ ] Identified relevant fields from available events.
+- [ ] Created an incident report template.
+- [ ] Verified a real Wazuh alert, if the Dashboard was available.
+- [ ] Documented any blockers honestly.
+- [ ] Added sanitized screenshots or terminal evidence.
+
+## 8. Interview Questions
+
+**Q1. What is alert triage?**  
+Alert triage is the initial process of reviewing and prioritizing alerts to decide which require further investigation.
+
+**Q2. Does a failed SSH login prove brute-force activity?**  
+No. Repeated failures from the same source over a short period may indicate brute-force activity, but context and supporting evidence are needed.
+
+**Q3. What is event correlation?**  
+It is the process of connecting related events using fields such as timestamps, IP addresses, usernames, and hostnames.
+
+**Q4. Why is incident documentation important?**  
+It preserves evidence, explains the investigation, supports escalation, and helps other analysts understand the decision.
+
+**Q5. Why might the Wazuh Dashboard be unavailable even when the Manager is active?**  
+The Dashboard depends on other services, including the Indexer. A failed Indexer can prevent the Dashboard from retrieving and displaying data.
+
+## 📌 Day 30 Status
+
+**Local investigation:** Complete when you have reviewed your logs and documented actual findings.
+
+**Wazuh Dashboard verification:** Pending until the Indexer is repaired and a real alert is confirmed.
+
+**Next:** Day 31 — SOC Alert Triage, Severity Classification & Escalation.
