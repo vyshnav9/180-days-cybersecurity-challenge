@@ -1,0 +1,233 @@
+# Day 31 — SOC Alert Triage, Severity Classification & Escalation
+
+## 🎯 Objective
+
+Today, I learned how SOC analysts investigate security alerts, classify their severity, prioritize incidents, and escalate suspicious activity to the appropriate team.
+
+### Learning Goals
+- Understand the SOC alert triage process.
+- Classify alerts by severity and urgency.
+- Distinguish false positives from genuine security incidents.
+- Learn when and how to escalate an alert.
+- Understand how Wazuh supports alert investigation.
+
+## 🧰 Tools Used
+- Wazuh SIEM
+- Ubuntu Linux
+- Linux authentication logs
+- Terminal
+- GitHub
+
+## 1. What Is SOC Alert Triage?
+
+Alert triage is the process of reviewing a security alert to determine whether it requires further investigation and how urgently it should be handled.
+
+### SOC Triage Workflow
+
+```text
+Security Alert Received
+        |
+        v
+Validate the Alert
+        |
+        v
+Collect Supporting Evidence
+        |
+        v
+Assess Impact and Likelihood
+        |
+        v
+Classify Severity
+        |
+        v
+Investigate, Close, or Escalate
+        |
+        v
+Document Findings
+```
+
+## 2. Severity Classification
+
+Severity describes how serious the potential security incident is. Actual severity depends on the environment, asset importance, evidence, and potential impact.
+
+| Severity | Example | Typical Response |
+|---|---|---|
+| **Critical** | Confirmed active compromise of a critical production system | Immediate incident escalation |
+| **High** | Strong evidence of account compromise or active malware | Urgent investigation and escalation |
+| **Medium** | Repeated suspicious authentication attempts or unusual activity needing investigation | Investigate promptly |
+| **Low** | Isolated suspicious event with limited evidence or impact | Review and monitor |
+| **Informational** | Expected activity or a useful security event without a current threat indication | Record or review as appropriate |
+
+**Important:** An alert's severity score is not automatically the same as the incident's final severity. Validate the evidence before deciding.
+
+## 3. Practice: Investigate Authentication Events
+
+On your own Ubuntu lab machine, run:
+
+```bash
+sudo grep -i "failed password" /var/log/auth.log | tail -n 20
+```
+
+Check for successful SSH logins:
+
+```bash
+sudo grep -i "accepted" /var/log/auth.log | tail -n 20
+```
+
+If `/var/log/auth.log` does not exist, your system may use systemd's journal instead:
+
+```bash
+sudo journalctl -u ssh --since "24 hours ago" --no-pager
+```
+
+On some distributions, the SSH service is named `sshd`.
+
+### Investigation Questions
+
+1. Are there multiple failed login attempts?
+2. Do the events share a source IP address?
+3. Are several usernames being targeted?
+4. Is there a successful login after the failures?
+5. Is the account privileged or associated with a critical system?
+6. Does other evidence support a compromise?
+
+Record only what the logs actually show. Repeated failed logins can be suspicious, but do not prove a successful attack by themselves.
+
+## 4. Alert Triage Scenarios
+
+Use these hypothetical scenarios to practise classification.
+
+### Scenario A — Single Failed Login
+
+**Observation:** One failed SSH login from an unfamiliar IP.
+
+- Initial assessment: Low or informational, depending on local policy.
+- Investigation: Check the source, surrounding events, and whether the attempt is expected.
+- Action: Document and monitor if no other suspicious evidence exists.
+
+### Scenario B — Repeated SSH Failures
+
+**Observation:** Many failed SSH attempts from one source IP within a short period.
+
+- Initial assessment: Medium; potentially High if the activity is sustained or targets a critical system.
+- Investigation: Check frequency, targeted accounts, source reputation using approved tools, and related events.
+- Action: Escalate according to SOC policy if the evidence indicates a likely brute-force attempt.
+
+### Scenario C — Suspicious Login Followed by Privileged Activity
+
+**Observation:** An unusual successful login followed by unexpected privilege escalation.
+
+- Initial assessment: High or Critical depending on evidence and system impact.
+- Investigation: Correlate authentication, `sudo`, process, and network events.
+- Action: Escalate urgently. Follow the organization's incident-response process and containment authorization.
+
+These are examples, not actual events detected on your system.
+
+## 5. What Is Alert Escalation?
+
+Escalation means transferring an alert or incident to a more appropriate analyst, incident responder, or security team because of its severity, uncertainty, or potential impact.
+
+| Level | Typical Responsibility |
+|---|---|
+| **L1 SOC Analyst** | Initial alert review, validation, evidence collection, documentation |
+| **L2 SOC Analyst** | Deeper investigation, event correlation, incident assessment |
+| **L3 / Incident Response** | Advanced analysis, threat hunting, containment and remediation guidance |
+
+Actual team structures differ between organizations.
+
+### When Should an Alert Be Escalated?
+
+- Evidence suggests a compromised account.
+- Activity affects a critical system.
+- Malware execution or data exfiltration is suspected.
+- A privileged account behaves unexpectedly.
+- The alert meets the organization's severity or response-time threshold.
+- The analyst lacks the permissions or expertise needed to proceed safely.
+
+Do not delay urgent escalation while trying to prove every detail.
+
+## 6. How to Investigate in Wazuh
+
+**Complete this section once your Wazuh Indexer and Dashboard are operational.**
+
+1. Open the Wazuh Dashboard.
+2. Navigate to the alerts or Threat Hunting view available in your version.
+3. Select an appropriate time range.
+4. Review the alert description, rule ID, severity level, agent, timestamp, and relevant event fields.
+5. Compare the alert with the original host logs.
+6. Search for related authentication, process, or network events.
+7. Record your classification and explain the evidence supporting it.
+
+If the Dashboard is still unavailable because the Indexer is failing, mark this step **Pending — Indexer unavailable**. Do not claim that you verified an alert.
+
+## 7. SOC Alert Triage Report Template
+
+Use this template for an alert you actually investigated:
+
+```text
+Incident ID: LAB-031
+Date/Time:
+Affected Host:
+Alert Description:
+Wazuh Rule ID (if available):
+Source IP (if available):
+Affected Account:
+Evidence Collected:
+Potential Impact:
+Initial Severity:
+Confidence: Low / Medium / High
+Classification: Benign / Suspicious / Confirmed Incident / Inconclusive
+Action Taken:
+Escalation Required: Yes / No / Pending
+Reason for Decision:
+```
+
+**Severity and confidence are different.** Severity measures potential seriousness; confidence describes how strongly the evidence supports your assessment.
+
+## 8. GitHub Evidence Checklist
+
+- [ ] Reviewed available Linux authentication logs.
+- [ ] Practised classifying the sample scenarios.
+- [ ] Explained why severity levels differ.
+- [ ] Created a sample triage report.
+- [ ] Recorded escalation criteria.
+- [ ] Captured sanitized evidence from my own lab.
+- [ ] Verified a real Wazuh alert, or marked Dashboard verification as pending.
+
+Do not upload sensitive IPs, account names, tokens, credentials, or unredacted logs.
+
+## 9. Key Learnings
+
+- Alert triage helps SOC teams prioritize security events.
+- Severity should reflect potential impact and the available evidence.
+- False positives should be validated and documented, not dismissed automatically.
+- Escalation ensures that serious incidents reach the right team quickly.
+- Good documentation records facts, uncertainty, decisions, and actions.
+- Wazuh provides useful alert data, but analysts must still investigate and validate it.
+
+## 10. SOC Interview Questions
+
+**Q1. What is alert triage?**  
+The initial assessment of a security alert to validate it, determine its significance, and decide the next action.
+
+**Q2. What is the difference between severity and priority?**  
+Severity describes the seriousness of the event; priority helps determine how urgently it should be handled, considering factors such as impact, urgency, and business context.
+
+**Q3. What is a false positive?**  
+An alert that indicates suspicious activity even though investigation determines that the activity does not represent the suspected threat.
+
+**Q4. When should an L1 analyst escalate an alert?**  
+When evidence or impact meets escalation criteria, a potential compromise requires urgent attention, or the investigation exceeds the analyst's authority or expertise.
+
+**Q5. Should every High-severity Wazuh alert be treated as a confirmed incident?**  
+No. The alert should be investigated and validated. Its severity is an important signal, not proof of compromise.
+
+## 📌 Day 31 Completion Status
+
+- **Learning and scenario practice:** Complete after reviewing the scenarios and answering the questions.
+- **Local log investigation:** Complete after examining and documenting actual logs.
+- **Wazuh verification:** Pending until the Indexer is operational and a real alert is confirmed.
+
+### Next Challenge
+
+**Day 32 — SOC Investigation Using Authentication, Process & Network Logs**
