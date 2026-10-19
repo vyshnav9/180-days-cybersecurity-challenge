@@ -1,0 +1,257 @@
+# Day 35 — Detecting Port Scanning & Network Reconnaissance
+
+## 🎯 Objective
+
+- Understand port scanning and network reconnaissance.
+- Identify common TCP scanning patterns.
+- Analyse packets using Wireshark.
+- Review network connections and firewall logs.
+- Document suspicious activity like a SOC Analyst.
+
+## 🧰 Tools Used
+
+- Ubuntu Linux
+- Wireshark
+- `ss`
+- `nmap` (optional, for an authorised lab)
+- Linux firewall logs
+- Wazuh SIEM (optional, when operational)
+
+## 1. What Is Network Reconnaissance?
+
+Network reconnaissance is the process of gathering information about systems, services, ports, and network structure.
+
+Port scanning is one technique used to discover which ports are open, closed, or filtered.
+
+### Common Types of Scanning
+
+| Scan type | Description |
+|---|---|
+| TCP Connect scan | Attempts to establish a complete TCP connection |
+| SYN scan | Uses TCP SYN packets to probe ports without completing a normal connection |
+| UDP scan | Sends UDP probes to identify available UDP services |
+| Horizontal scan | Probes the same port across multiple hosts |
+| Vertical scan | Probes multiple ports on a single host |
+
+Reconnaissance can be legitimate, such as an administrator auditing a server, or suspicious when unauthorised.
+
+## 2. Understand the Detection Workflow
+
+```text
+Network Packets or Firewall Logs
+              |
+              v
+Identify Source and Destination
+              |
+              v
+Count Unique Destination Ports
+              |
+              v
+Review SYN, RST, and Response Patterns
+              |
+              v
+Compare With Expected Activity
+              |
+              v
+Document, Classify, and Escalate
+```
+
+## 3. Check Listening Services on Your Linux Machine
+
+Run:
+
+```bash
+sudo ss -lntup
+```
+
+This displays listening TCP and UDP sockets, including process details when available.
+
+Record:
+
+- Local address
+- Listening port
+- Associated process
+- Whether the service is expected
+
+A listening port does not automatically mean a vulnerability exists. Check whether the service is needed and appropriately exposed.
+
+## 4. Perform a Safe Scan in Your Own Lab
+
+Only scan a system you own or have explicit permission to test.
+
+If Nmap is installed, check the help page:
+
+```bash
+nmap --help
+```
+
+For a basic scan of your own machine:
+
+```bash
+nmap -sT -p 22,80,443 127.0.0.1
+```
+
+This performs a TCP connect scan against three selected ports on the local machine.
+
+The results depend on whether services are listening and how the host firewall is configured. A closed port is not the same as a filtered port.
+
+**Safety:** Do not scan public IP addresses, college networks, or other people's devices without authorisation.
+
+## 5. Capture Scan Traffic With Wireshark
+
+1. Open Wireshark.
+2. Select the interface carrying your authorised lab traffic.
+3. Start a capture.
+4. Run the local Nmap command above in another terminal.
+5. Stop the capture and inspect the packets.
+
+### Useful Display Filters
+
+| Filter | What it shows |
+|---|---|
+| `tcp.flags.syn == 1 && tcp.flags.ack == 0` | Initial TCP SYN packets |
+| `tcp.flags.reset == 1` | TCP reset packets |
+| `tcp.flags.syn == 1 && tcp.flags.ack == 1` | SYN-ACK responses |
+| `tcp.dstport == 22` | TCP packets destined for port 22 |
+| `ip.addr == 127.0.0.1` | IPv4 packets involving loopback |
+
+Note that loopback traffic may not appear in the capture interface you selected. If you cannot see the scan, check whether Wireshark offers a loopback interface on your operating system, or use a dedicated isolated lab VM and capture its traffic on the correct interface.
+
+## 6. How to Recognise Potential Port Scanning
+
+Look for patterns such as:
+
+- One source contacting many destination ports on one host
+- One source contacting the same port across multiple hosts
+- Repeated SYN packets with no completed connection
+- Many connection attempts receiving RST responses
+- Repeated probes within a short period
+
+These patterns are clues, not proof. Legitimate vulnerability scanners, monitoring systems, and administrators can produce similar traffic.
+
+### Investigation Questions
+
+1. What is the source IP?
+2. Which destination host is being probed?
+3. How many unique destination ports are contacted?
+4. What is the time window?
+5. Are there successful connections or mostly unsuccessful attempts?
+6. Is the source associated with an approved scanner or administrator?
+
+## 7. Review Firewall and System Logs
+
+On Ubuntu, inspect available UFW status:
+
+```bash
+sudo ufw status verbose
+```
+
+If UFW logging is enabled, review its log entries where available:
+
+```bash
+sudo journalctl -k --since "1 hour ago" --no-pager | grep -Ei "UFW|BLOCK|DROP"
+```
+
+Depending on your system, firewall events may instead be recorded in `/var/log/ufw.log`, another logging destination, or not logged at all.
+
+Do not enable firewall rules or block addresses blindly. Follow your lab instructions and verify existing rules before making changes.
+
+## 8. SOC Investigation Exercise
+
+Use the packets captured during your own authorised lab scan.
+
+Fill in the table using actual evidence:
+
+| Field | Your finding |
+|---|---|
+| Source IP | [Observed source] |
+| Destination IP | [Observed destination] |
+| Unique destination ports | [Count observed] |
+| Time window | [Capture timestamps] |
+| TCP responses | [SYN-ACK, RST, or other observed results] |
+| Expected activity? | [Yes / No / Unknown] |
+| Initial assessment | [Benign / Suspicious / Inconclusive] |
+
+Do not invent packet counts or claim an attack was detected if your capture does not show it.
+
+## 9. Wazuh Integration
+
+Complete this section once your Wazuh Indexer and Dashboard are operational.
+
+1. Open the Wazuh Dashboard.
+2. Select an appropriate time range.
+3. Review available network-related alerts and firewall logs.
+4. Inspect the source IP, destination, timestamp, and rule details.
+5. Correlate relevant alerts with your packet capture.
+6. Document whether the evidence supports a scanning hypothesis.
+
+Wazuh does not automatically detect every port scan from every agent installation. Detection depends on the available telemetry, log collection, and configured rules or integrations.
+
+If the Indexer is still unavailable, mark:
+
+**Wazuh verification: Pending — Indexer unavailable.**
+
+## 10. Incident Report Template
+
+```text
+Incident ID: LAB-035
+Date/Time:
+Source IP:
+Destination Host:
+Ports Probed:
+Number of Attempts:
+Observed TCP Responses:
+Evidence Source: Wireshark / Firewall Logs / Wazuh
+Expected Activity:
+Initial Severity:
+Confidence:
+Conclusion: Benign / Suspicious / Inconclusive
+Recommended Action:
+Escalation Required:
+```
+
+Base your conclusion on evidence. A confirmed scan does not automatically mean the scanner compromised the target.
+
+## 11. GitHub Checklist
+
+- [ ] Reviewed listening services using `ss`.
+- [ ] Performed a permitted scan of my own lab.
+- [ ] Captured relevant traffic in Wireshark.
+- [ ] Applied TCP SYN and RST filters.
+- [ ] Recorded source, destination, ports, and timestamps.
+- [ ] Documented actual findings.
+- [ ] Added sanitised screenshots.
+- [ ] Recorded Wazuh verification status accurately.
+
+## 12. SOC Interview Questions
+
+**Q1. What is port scanning?**
+
+A technique for probing ports on a host to determine which services may be available.
+
+**Q2. What is the difference between a vertical and horizontal scan?**
+
+A vertical scan probes multiple ports on one host; a horizontal scan probes the same port across multiple hosts.
+
+**Q3. Does a TCP SYN packet prove port scanning?**
+
+No. SYN packets are part of normal TCP connection establishment. Repeated probes across many ports or hosts may provide stronger evidence.
+
+**Q4. What does a TCP RST indicate?**
+
+A TCP reset abruptly rejects or terminates a connection. In a scan, RST responses can indicate closed ports, depending on the context.
+
+**Q5. What should an L1 SOC analyst do after identifying possible reconnaissance?**
+
+Validate the source, destination, time window, and expected activity; collect evidence; assess severity; and escalate according to organisational policy.
+
+## 📌 Day 35 Completion Status
+
+- **Local scan:** Complete after scanning an authorised lab target.
+- **Packet analysis:** Complete after inspecting the actual capture.
+- **Investigation report:** Complete after recording evidence and findings.
+- **Wazuh verification:** Pending until the Indexer is operational and relevant alerts are verified.
+
+### Next Challenge
+
+**Day 36 — Detecting Brute-Force Attacks Through Linux Logs & SIEM Alerts**
