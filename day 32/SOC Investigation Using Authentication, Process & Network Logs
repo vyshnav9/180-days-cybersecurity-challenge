@@ -1,0 +1,270 @@
+# Day 32 — SOC Investigation Using Authentication, Process & Network Logs
+
+## 🎯 Objective
+
+Learn how to investigate suspicious Linux activity by correlating:
+
+- Authentication logs — who attempted to log in?
+- Process logs — what programs were running?
+- Network information — what connections were active?
+- Timestamps — do the events form a meaningful sequence?
+
+## 🧰 Tools Used
+
+- Ubuntu Linux
+- Linux authentication logs or systemd journal
+- `ps`, `ss`, `journalctl`, `grep`
+- Wazuh SIEM (when the Indexer and Dashboard are operational)
+
+## 1. Understand the Investigation Flow
+
+```text
+Authentication Events
+        |
+        v
+Identify the User and Login Time
+        |
+        v
+Inspect Processes Around That Time
+        |
+        v
+Check Related Network Connections
+        |
+        v
+Correlate Evidence
+        |
+        v
+Classify, Document, and Escalate
+```
+
+**Key concept:** One event may be harmless, but several related events can provide stronger evidence of suspicious activity.
+
+## 2. Investigate Authentication Logs
+
+On Ubuntu, try:
+
+```bash
+sudo grep -Ei "Failed password|Accepted password|Accepted publickey|session opened" /var/log/auth.log | tail -n 30
+```
+
+If `/var/log/auth.log` is unavailable, use the system journal:
+
+```bash
+sudo journalctl -u ssh --since "24 hours ago" --no-pager
+```
+
+On some distributions, the service is named `sshd` rather than `ssh`.
+
+### What to look for
+
+- Repeated authentication failures
+- Successful logins from unexpected sources
+- Unexpected usernames
+- A successful login after repeated failures
+- Unexpected `sudo` or privileged activity
+
+Record the timestamp, username, source IP (if present), and event type. Do not assume a login is malicious just because its source is unfamiliar.
+
+## 3. Investigate Running Processes
+
+List running processes:
+
+```bash
+ps aux
+```
+
+View process IDs, parent process IDs, users, and command lines:
+
+```bash
+ps -eo user,pid,ppid,lstart,stat,cmd --sort=start_time
+```
+
+Inspect a specific process:
+
+```bash
+ps -fp <PID>
+```
+
+Replace `<PID>` with a real process ID.
+
+### Questions to ask
+
+- Which user owns the process?
+- When did it start?
+- Does its command line match its expected purpose?
+- Is its parent process expected?
+- Is it running from an unusual location?
+- Does it have a network connection?
+
+A process name alone is not enough to establish malicious activity. Investigate the executable path, command line, parent process, and surrounding evidence.
+
+## 4. Investigate Network Connections
+
+List listening TCP and UDP sockets:
+
+```bash
+sudo ss -lntup
+```
+
+List established TCP connections:
+
+```bash
+sudo ss -tnp state established
+```
+
+Display local IP addresses:
+
+```bash
+ip -br address
+```
+
+View the routing table:
+
+```bash
+ip route
+```
+
+### What to investigate
+
+- Unexpected listening services
+- Connections to unfamiliar external addresses
+- A process making unexpected network connections
+- Connections associated with an unusual process or user
+
+**Important:** A listening socket is not automatically suspicious, and an unfamiliar external IP is not automatically malicious. Consider the host's normal behaviour and approved services.
+
+## 5. Correlate the Three Sources
+
+Build a timeline using actual evidence from your lab.
+
+| Time | Evidence source | Observation | Initial interpretation |
+|---|---|---|---|
+| [Timestamp] | Authentication | Failed login | Could be a typo or attempted intrusion |
+| [Timestamp] | Authentication | Successful login | Validate user, source, and context |
+| [Timestamp] | Process | New or unusual process | Inspect ownership and command line |
+| [Timestamp] | Network | Connection associated with process | Identify destination and expected behaviour |
+
+Look for a plausible sequence:
+
+1. An authentication event identifies an account and time.
+2. Process evidence shows activity under that account or on the same host.
+3. Network evidence indicates whether the activity involved external communication.
+4. The timeline helps determine whether the events are related.
+
+Do not connect events merely because they occurred on the same machine. Check timestamps, process IDs, usernames, source addresses, and other available fields.
+
+## 6. Optional: Inspect System Activity Through Journald
+
+View recent system logs:
+
+```bash
+sudo journalctl --since "1 hour ago" --no-pager
+```
+
+Inspect recent kernel messages:
+
+```bash
+sudo journalctl -k -n 50 --no-pager
+```
+
+Search the journal for SSH-related messages:
+
+```bash
+sudo journalctl --since "24 hours ago" --no-pager | grep -Ei "sshd|sudo|authentication"
+```
+
+Journal contents depend on your Linux distribution, services, and logging configuration.
+
+## 7. Wazuh Investigation
+
+**Complete this section when the Wazuh Indexer and Dashboard are working.**
+
+1. Open the Wazuh Dashboard.
+2. Navigate to the alerts or Threat Hunting view available in your version.
+3. Select a relevant time range.
+4. Review authentication-related alerts.
+5. Inspect available fields such as agent, rule ID, timestamp, username, source IP, and process information.
+6. Compare the alert with the corresponding host logs.
+7. Document the evidence and your conclusion.
+
+Wazuh can only correlate the data it actually receives and the fields available in its configured integrations and rules. Do not assume every process or network event is automatically collected.
+
+**Current lab note:** If your Indexer is still failing, record `Wazuh dashboard verification: Pending — Indexer unavailable`. You can still complete the local Linux investigation.
+
+## 8. Incident Investigation Report
+
+Use this template for a real investigation:
+
+```text
+Incident ID: LAB-032
+Date/Time:
+Affected Host:
+Account:
+Authentication Evidence:
+Process Evidence:
+Network Evidence:
+Timeline:
+Potential Impact:
+Initial Severity:
+Confidence:
+Conclusion: Benign / Suspicious / Inconclusive / Confirmed Incident
+Recommended Action:
+Escalation Required:
+Wazuh Verification: Verified / Pending / Not Available
+```
+
+Separate observed facts from assumptions. Only label an incident confirmed when the evidence supports that conclusion.
+
+## 9. GitHub Evidence Checklist
+
+- [ ] Reviewed authentication logs.
+- [ ] Inspected running processes and command lines.
+- [ ] Checked listening sockets and established connections.
+- [ ] Created a timeline from available evidence.
+- [ ] Explained how the three evidence sources relate.
+- [ ] Completed an investigation report.
+- [ ] Added sanitized terminal screenshots.
+- [ ] Marked Wazuh verification accurately.
+
+Never publish passwords, tokens, private keys, or unredacted sensitive logs.
+
+## 10. Key Learnings
+
+- Authentication logs help identify login activity.
+- Process information helps explain what ran on the host.
+- Network information helps identify communication and exposed services.
+- Correlation provides context that isolated events may not provide.
+- Evidence-based reporting supports better triage and escalation.
+
+## 11. SOC Interview Questions
+
+**Q1. Why correlate authentication, process, and network logs?**
+
+To establish context and a timeline, helping analysts determine whether related events indicate suspicious activity.
+
+**Q2. Does an unknown process indicate malware?**
+
+No. Its path, command line, owner, parent process, behaviour, and other evidence must be examined.
+
+**Q3. What does `ss -lntup` show?**
+
+Listening TCP and UDP sockets, numeric addresses and ports, and process information when available with sufficient privileges.
+
+**Q4. What is a process ID (PID)?**
+
+A number assigned by the operating system to identify a running process.
+
+**Q5. What should an L1 analyst do if evidence suggests account compromise?**
+
+Preserve relevant evidence, document findings, and escalate according to the organisation's incident-response procedures. Follow only authorised containment actions.
+
+## 📌 Day 32 Completion Status
+
+- **Local log investigation:** Complete after examining your actual logs.
+- **Process and network analysis:** Complete after recording real observations.
+- **Timeline and report:** Complete after documenting evidence.
+- **Wazuh verification:** Pending until the Indexer is operational and the Dashboard displays a real event.
+
+### Next Challenge
+
+**Day 33 — Detecting Suspicious Linux Network Connections & Processes**
