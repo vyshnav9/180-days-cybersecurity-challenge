@@ -1,0 +1,313 @@
+# Day 34 — Linux Network Traffic Analysis Using Wireshark
+
+## 🎯 Objective
+
+- Capture network traffic on a Linux machine.
+- Understand packet details and network conversations.
+- Analyse DNS, TCP, ICMP, and HTTP/HTTPS traffic.
+- Use Wireshark display filters to investigate events.
+- Identify unusual traffic patterns and document findings.
+
+## 🧰 Tools Used
+
+- Ubuntu Linux
+- Wireshark
+- Terminal
+- `ping`, `ip`, `ss`
+- Wazuh SIEM (optional, when operational)
+
+## 1. What Is Wireshark?
+
+Wireshark is a network protocol analyser that captures and inspects packets travelling through a network interface.
+
+SOC analysts use packet analysis to investigate suspicious connections, DNS lookups, failed connections, unexpected protocols, and possible data transfers.
+
+### Packet Investigation Workflow
+
+```text
+Capture Network Traffic
+         |
+         v
+Select Relevant Packets
+         |
+         v
+Apply Display Filters
+         |
+         v
+Inspect Packet Details
+         |
+         v
+Correlate With Logs
+         |
+         v
+Document Findings
+```
+
+## 2. Identify Your Network Interface
+
+Open a Linux terminal and run:
+
+```bash
+ip -br address
+```
+
+List available interfaces:
+
+```bash
+ip link show
+```
+
+Identify the interface used for your network connection. Common names include `eth0`, `ens33`, `enp0s3`, and `wlan0`.
+
+## 3. Start a Wireshark Capture
+
+1. Open Wireshark.
+2. Select your active network interface.
+3. Start capturing packets.
+4. Generate some normal test traffic.
+5. Stop the capture after approximately 30–60 seconds.
+
+Generate ICMP traffic in another terminal:
+
+```bash
+ping -c 4 8.8.8.8
+```
+
+Generate DNS traffic:
+
+```bash
+nslookup example.com
+```
+
+If `nslookup` is unavailable, use an installed DNS lookup utility such as `dig`.
+
+**Note:** Use only your own machine or a network where you have permission to capture traffic. Packet captures can contain sensitive information.
+
+## 4. Understand the Wireshark Interface
+
+| Field | Meaning |
+|---|---|
+| No. | Packet number |
+| Time | Capture timestamp |
+| Source | Packet source address |
+| Destination | Packet destination address |
+| Protocol | Protocol Wireshark identified |
+| Length | Packet length in bytes |
+| Info | Brief protocol-specific summary |
+
+Select a packet and expand its protocol sections to inspect Ethernet, IP, TCP/UDP, DNS, ICMP, or other available details.
+
+## 5. Practise Wireshark Display Filters
+
+Enter these in the **display filter bar** at the top of Wireshark.
+
+| Filter | Purpose |
+|---|---|
+| `dns` | Display DNS packets |
+| `icmp` | Display ICMP packets |
+| `tcp` | Display TCP packets |
+| `udp` | Display UDP packets |
+| `arp` | Display ARP packets |
+| `http` | Display packets decoded as HTTP |
+| `tls` | Display TLS protocol packets |
+| `tcp.port == 443` | Display TCP packets using port 443 |
+| `ip.addr == 8.8.8.8` | Display packets involving this IPv4 address |
+| `tcp.flags.syn == 1 && tcp.flags.ack == 0` | Display initial TCP SYN packets |
+| `tcp.analysis.retransmission` | Display packets Wireshark identifies as TCP retransmissions |
+
+A display filter only changes which captured packets are shown; it does not delete the other packets from the capture.
+
+## 6. Analyse ICMP Traffic
+
+Run:
+
+```bash
+ping -c 4 8.8.8.8
+```
+
+Apply this display filter:
+
+```text
+icmp
+```
+
+Inspect the packet list for Echo requests and Echo replies.
+
+### What to record
+
+- Source and destination IP addresses
+- Number of requests and replies
+- Whether replies were received
+- Whether any packet loss occurred
+
+If no ICMP packets appear, check the selected interface and whether your network permits ICMP traffic.
+
+## 7. Analyse DNS Traffic
+
+Generate a DNS query:
+
+```bash
+nslookup example.com
+```
+
+Apply:
+
+```text
+dns
+```
+
+Inspect the DNS query and response, if present.
+
+Look for:
+
+- Query name
+- Query type, such as A or AAAA
+- Response code
+- Returned addresses, if any
+- Repeated queries or unexpected domains
+
+A failed DNS response does not necessarily indicate an attack. It can result from configuration problems, filtering, or a domain that does not exist.
+
+## 8. Analyse TCP Traffic
+
+Apply:
+
+```text
+tcp
+```
+
+To inspect initial connection attempts:
+
+```text
+tcp.flags.syn == 1 && tcp.flags.ack == 0
+```
+
+To inspect TCP connection resets:
+
+```text
+tcp.flags.reset == 1
+```
+
+To inspect retransmissions:
+
+```text
+tcp.analysis.retransmission
+```
+
+### Investigation questions
+
+- Does a connection attempt receive a response?
+- Are repeated SYN packets visible?
+- Are resets or retransmissions present?
+- Is the behaviour consistent with the application being tested?
+
+These packets can indicate normal network issues as well as suspicious activity. Interpret them in context.
+
+## 9. Understand HTTP and HTTPS
+
+For HTTP traffic, use:
+
+```text
+http
+```
+
+For TLS traffic, use:
+
+```text
+tls
+```
+
+HTTP may expose readable request details when the traffic is unencrypted. HTTPS encrypts application data, so a packet capture generally cannot reveal the full contents of the protected session without appropriate decryption material and configuration.
+
+**Security reminder:** Never attempt to access another person's private traffic or credentials. Use your own lab traffic.
+
+## 10. Optional: Save a Packet Capture
+
+In Wireshark:
+
+1. Select **File → Save As**.
+2. Save your own lab capture as `day34-lab.pcapng`.
+3. Reopen the file to confirm it contains the expected packets.
+4. Keep the capture private if it contains internal IPs, hostnames, or other sensitive data.
+
+You can also use `ping` to generate traffic while capturing, but do not assume that a saved file contains specific packets until you verify it.
+
+## 11. SOC Investigation Exercise
+
+Investigate a short capture from your own lab.
+
+### Investigation checklist
+
+- [ ] Identify the source and destination addresses.
+- [ ] Identify the main protocols present.
+- [ ] Inspect at least one DNS query or response.
+- [ ] Inspect ICMP requests and replies, if generated.
+- [ ] Inspect TCP connection attempts, if present.
+- [ ] Record any retransmissions or resets observed.
+- [ ] Explain whether the evidence suggests normal behaviour or requires further investigation.
+
+### Findings table
+
+| Observation | Evidence | Interpretation |
+|---|---|---|
+| DNS query | [Record observed domain] | [Expected or needs review] |
+| ICMP traffic | [Record observed result] | [Reachability observation] |
+| TCP connection | [Record observed ports and flags] | [Connection assessment] |
+| Other traffic | [Record actual finding] | [Explain limitations] |
+
+Fill this table with your actual capture results. Do not invent suspicious traffic or claim an attack was detected without evidence.
+
+## 12. Wazuh Correlation (Optional)
+
+When your Wazuh Indexer and Dashboard are operational:
+
+1. Note the capture time and relevant host.
+2. Review Wazuh alerts from the corresponding time range.
+3. Compare any relevant alert with the host logs and packet-capture evidence.
+4. Document whether the events appear related.
+
+Wireshark captures and Wazuh alerts are separate evidence sources. Wazuh does not automatically ingest every packet captured by Wireshark.
+
+If the Indexer remains unavailable, mark this part **Pending — Indexer unavailable**.
+
+## 13. GitHub Checklist
+
+- [ ] Identified the active network interface.
+- [ ] Captured authorised lab traffic.
+- [ ] Applied at least five display filters.
+- [ ] Inspected DNS, ICMP, and TCP traffic where available.
+- [ ] Saved a verified lab capture, if appropriate.
+- [ ] Documented actual observations.
+- [ ] Added sanitised screenshots.
+- [ ] Recorded Wazuh verification status honestly.
+
+## 14. SOC Interview Questions
+
+**Q1. What is Wireshark?**  
+A network protocol analyser used to capture and inspect network packets.
+
+**Q2. What is the difference between a capture filter and a display filter?**  
+A capture filter limits which packets are collected; a display filter controls which already-captured packets are shown.
+
+**Q3. What does DNS do?**  
+DNS translates domain names into records such as IP addresses and other service information.
+
+**Q4. What is a TCP SYN packet?**  
+It is a TCP flag commonly used to initiate a connection.
+
+**Q5. Can Wireshark show the contents of every HTTPS request?**  
+No. HTTPS encrypts application data, so full request contents are generally not readable from a normal packet capture.
+
+**Q6. Does a TCP retransmission prove malicious activity?**  
+No. Retransmissions can result from packet loss, congestion, or network conditions.
+
+## 📌 Day 34 Completion Status
+
+- **Packet capture:** Complete after capturing and checking your own lab traffic.
+- **Protocol analysis:** Complete after recording actual packet observations.
+- **Findings report:** Complete after documenting evidence and limitations.
+- **Wazuh correlation:** Pending until the Indexer works and relevant evidence is available.
+
+### Next Challenge
+
+**Day 35 — Detecting Port Scanning & Network Reconnaissance**
