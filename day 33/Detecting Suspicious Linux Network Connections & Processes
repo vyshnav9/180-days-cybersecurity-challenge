@@ -1,0 +1,322 @@
+# Day 33 — Detecting Suspicious Linux Network Connections & Processes
+
+## 🎯 Objective
+
+- Identify unusual Linux processes.
+- Inspect listening ports and active network connections.
+- Correlate processes with network activity.
+- Understand indicators of potentially suspicious behaviour.
+- Document findings like a SOC Analyst.
+
+## 🧰 Tools Used
+
+- Ubuntu Linux
+- Linux Terminal
+- `ps`, `ss`, `lsof`, `ip`, `journalctl`
+- Wazuh SIEM (optional, when operational)
+
+## 1. Understand the Investigation Flow
+
+```text
+Suspicious Activity
+       |
+       v
+Identify the Process
+       |
+       v
+Inspect PID, User, and Command
+       |
+       v
+Check Network Connections
+       |
+       v
+Correlate Logs and Timestamps
+       |
+       v
+Document Findings and Escalate
+```
+
+## 2. List Running Processes
+
+Run:
+
+```bash
+ps aux
+```
+
+For a more detailed view:
+
+```bash
+ps -eo user,pid,ppid,lstart,etime,stat,%cpu,%mem,cmd --sort=-%cpu | head -n 20
+```
+
+This displays the user, process ID, parent process ID, start time, elapsed time, state, CPU and memory usage, and command.
+
+### What to investigate
+
+- Unexpected processes running as `root`
+- Commands launched from unusual directories
+- Unknown parent-child process relationships
+- Unexpected resource consumption
+- Executables or command lines that do not match normal activity
+
+A high CPU value or an unfamiliar process name is not sufficient proof of malware. Validate the executable and its expected purpose.
+
+## 3. Inspect Listening Ports
+
+Run:
+
+```bash
+sudo ss -lntup
+```
+
+Common flags:
+
+- `-l` — listening sockets
+- `-n` — numeric addresses and ports
+- `-t` — TCP
+- `-u` — UDP
+- `-p` — process information, when available
+
+### Investigation questions
+
+1. Which ports are listening?
+2. Which process owns each socket?
+3. Is the service expected on this machine?
+4. Is it bound to localhost, a particular interface, or all interfaces?
+5. Does the service need to be exposed to other machines?
+
+A service listening on `0.0.0.0` or `::` may accept connections on multiple interfaces, subject to firewall and network configuration. It is not automatically vulnerable.
+
+## 4. Inspect Established Connections
+
+Run:
+
+```bash
+sudo ss -tnp state established
+```
+
+To inspect all TCP sockets:
+
+```bash
+sudo ss -antp
+```
+
+Record relevant information:
+
+| Field | Meaning |
+|---|---|
+| Local address | Local IP and port |
+| Peer address | Remote IP and port |
+| Process | Associated process, if available |
+| State | Connection state |
+| Timestamp | Obtain from supporting logs when available |
+
+`ss` provides a current snapshot; it does not automatically provide a historical connection timeline.
+
+## 5. Correlate a Process With a Connection
+
+First, identify a PID from the output of `ss`.
+
+Inspect the process:
+
+```bash
+ps -fp <PID>
+```
+
+Inspect its executable path:
+
+```bash
+sudo readlink -f /proc/<PID>/exe
+```
+
+Inspect its command line:
+
+```bash
+sudo tr '\0' ' ' < /proc/<PID>/cmdline
+echo
+```
+
+Replace `<PID>` with the actual process ID.
+
+If `lsof` is installed, you can also run:
+
+```bash
+sudo lsof -nP -a -p <PID> -i
+```
+
+This can help associate a process with network sockets. Processes may exit between commands, so results can change.
+
+**Safety note:** Do not terminate a process or block an IP address solely because it looks unfamiliar. First validate its purpose and follow your lab or organisation's response procedure.
+
+## 6. Search for Suspicious Behaviour
+
+Examples of behaviour worth investigating include:
+
+- An unexpected service listening on a public-facing interface
+- A process communicating with an unrecognised external destination
+- A process running from a temporary or user-writable directory
+- A new process appearing after an unexpected login
+- A privileged process with an unusual command line
+
+These are investigation leads, not definitive indicators of compromise. Legitimate applications can exhibit similar behaviour.
+
+## 7. Review Recent System Logs
+
+Inspect recent system events:
+
+```bash
+sudo journalctl --since "1 hour ago" --no-pager
+```
+
+Search for SSH and privilege-related events:
+
+```bash
+sudo journalctl --since "24 hours ago" --no-pager | grep -Ei "sshd|sudo|authentication"
+```
+
+Check whether a relevant service has logged errors:
+
+```bash
+sudo journalctl -u <SERVICE_NAME> -n 50 --no-pager
+```
+
+Replace `<SERVICE_NAME>` with a real service name.
+
+Correlate timestamps from logs with process start times and your current network snapshot. These sources may not record exactly the same events.
+
+## 8. Optional: Python Process Review
+
+The following script lists process IDs, users, names, and command lines for basic review.
+
+Install `psutil` in a virtual environment if it is not already available:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install psutil
+```
+
+Create `process_review.py`:
+
+```python
+import psutil
+
+print(f"{'PID':<8} {'USER':<16} {'NAME':<24} COMMAND")
+print("-" * 90)
+
+for proc in psutil.process_iter(
+    ["pid", "username", "name", "cmdline"]
+):
+    try:
+        info = proc.info
+        command = " ".join(info["cmdline"] or [])
+        username = info["username"] or "unknown"
+        name = info["name"] or "unknown"
+
+        print(
+            f"{info['pid']:<8} "
+            f"{username[:15]:<16} "
+            f"{name[:23]:<24} "
+            f"{command}"
+        )
+
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        continue
+```
+
+Run it:
+
+```bash
+python process_review.py
+```
+
+This script is an inventory aid, not an automated malware detector. Access to some process details may require additional privileges. Review the output locally and redact sensitive information before sharing it.
+
+## 9. Wazuh Integration
+
+**Complete this section when your Wazuh Indexer and Dashboard are operational.**
+
+1. Open the Wazuh Dashboard.
+2. Select the relevant agent.
+3. Review alerts for the appropriate time range.
+4. Inspect any available process, authentication, or network-related fields.
+5. Compare alert details with the host's actual logs and command output.
+6. Record the rule ID, timestamp, host, evidence, and conclusion.
+
+Wazuh does not automatically collect every live process or network connection merely because an agent is installed. Visibility depends on the configured log sources, integrations, inventory capabilities, and rules.
+
+If the Indexer is still failing, mark dashboard verification as:
+
+**Pending — Wazuh Indexer unavailable.**
+
+Do not claim that Wazuh detected an event until you have verified it.
+
+## 10. Investigation Report Template
+
+```text
+Incident ID: LAB-033
+Date/Time:
+Host:
+Process Name:
+PID:
+Process Owner:
+Executable Path:
+Local IP and Port:
+Remote IP and Port:
+Related Authentication Events:
+Supporting Evidence:
+Potential Impact:
+Initial Severity:
+Confidence:
+Conclusion: Benign / Suspicious / Inconclusive
+Recommended Action:
+Wazuh Verification: Verified / Pending / Not Available
+```
+
+Use real observations from your own lab. Never invent a suspicious connection or label a process as malware without supporting evidence.
+
+## 11. GitHub Checklist
+
+- [ ] Listed running processes.
+- [ ] Inspected listening ports.
+- [ ] Reviewed established TCP connections.
+- [ ] Inspected a process ID and executable path.
+- [ ] Checked recent system logs.
+- [ ] Correlated available process and network evidence.
+- [ ] Created an investigation report.
+- [ ] Added sanitised screenshots or command output.
+- [ ] Recorded Wazuh verification status honestly.
+
+## 12. SOC Interview Questions
+
+**Q1. What is the difference between a listening port and an established connection?**
+
+A listening socket waits for incoming connections; an established TCP connection represents an active TCP session.
+
+**Q2. Why inspect the PID associated with a network connection?**
+
+It helps identify the process responsible for the socket and supports further investigation of its owner, command line, and executable.
+
+**Q3. Is every connection to an unfamiliar IP malicious?**
+
+No. Validate the destination, process, application behaviour, and other available evidence.
+
+**Q4. What does `lsof -i` help identify?**
+
+It lists open files associated with network activity, including sockets, subject to permissions and available system information.
+
+**Q5. What should an L1 SOC analyst do after finding a suspicious process?**
+
+Collect relevant evidence, correlate events, document observations, assess severity, and escalate according to the organisation's procedures.
+
+## 📌 Day 33 Completion Status
+
+- **Process inspection:** Complete after recording actual process observations.
+- **Network inspection:** Complete after reviewing actual sockets and connections.
+- **Evidence correlation:** Complete after documenting supported findings.
+- **Wazuh verification:** Pending until the Indexer works and a real event is confirmed.
+
+### Next Challenge
+
+**Day 34 — Linux Network Traffic Analysis Using Wireshark**
