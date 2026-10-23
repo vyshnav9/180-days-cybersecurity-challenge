@@ -1,0 +1,253 @@
+# Day 40 — Windows PowerShell Log Analysis & Suspicious Script Activity Investigation
+
+## 🎯 Objective
+
+Learn how to investigate PowerShell activity on Windows using built-in logs and PowerShell commands.
+
+Today's goals:
+- Understand how PowerShell is used in cybersecurity investigations.
+- Identify important PowerShell-related Event IDs.
+- Search Windows logs for suspicious script activity.
+- Learn basic indicators of suspicious PowerShell behavior.
+- Correlate script activity with process creation and other events.
+- Prepare an evidence-based SOC investigation report.
+
+## 🧠 1. What Is PowerShell?
+
+PowerShell is a Windows command-line shell and scripting language used for system administration, automation, and security investigation.
+
+SOC analysts may investigate PowerShell because it can be used for legitimate administration as well as malicious activity.
+
+Examples of legitimate uses:
+- Checking running processes.
+- Inspecting services.
+- Collecting system information.
+- Automating administrative tasks.
+
+Potential warning signs include unexpected script execution, unusual command-line arguments, and activity that does not match the user's role or normal behavior.
+
+**Investigation flow:**
+
+`PowerShell Activity → Event Log Review → Process Correlation → Risk Assessment → Incident Report`
+
+## 📋 2. Important PowerShell Event IDs
+
+| Event ID | Log source | Meaning |
+|---|---|---|
+| 400 | PowerShell Operational | PowerShell engine state changed to indicate a new session starting |
+| 403 | PowerShell Operational | PowerShell engine state changed to indicate a session ending |
+| 4103 | PowerShell Operational | Module logging event, when configured |
+| 4104 | PowerShell Operational | Script block logging event, when configured |
+
+These events are useful only when the relevant log channel and logging settings are available. Event contents vary by Windows and PowerShell versions.
+
+## 🔍 3. Open PowerShell Logs in Event Viewer
+
+1. Press `Win + R`.
+2. Type `eventvwr.msc`.
+3. Press Enter.
+4. Navigate to:
+
+`Applications and Services Logs → Microsoft → Windows → PowerShell → Operational`
+
+Look for events such as `400`, `403`, `4103`, and `4104`.
+
+If the log is empty or unavailable, the required logging may not be enabled or no matching events may have been recorded.
+
+## 💻 4. Search PowerShell Events Using PowerShell
+
+### A. Check recent PowerShell Operational events
+
+```powershell
+Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' -MaxEvents 20 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, ProviderName, Message |
+Format-List
+```
+
+### B. Search for script block logging events
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-PowerShell/Operational'
+    Id = 4104
+} -MaxEvents 10 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+### C. Count Event ID 4104 records
+
+```powershell
+$events = Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-PowerShell/Operational'
+    Id = 4104
+} -ErrorAction SilentlyContinue
+
+"Script block events found: $(@($events).Count)"
+```
+
+**If no events appear:** This does not prove suspicious activity is absent. Script block logging may not be enabled, or the selected log may contain no matching events.
+
+## 🛠️ 5. Generate a Benign PowerShell Test
+
+Open a new PowerShell window and run a harmless command:
+
+```powershell
+Get-Date
+Get-Process | Select-Object -First 5 ProcessName, Id
+```
+
+Then review the PowerShell Operational log again.
+
+These commands demonstrate normal PowerShell usage, but they will not necessarily generate Event ID 4104 unless script block logging is configured and the executed content qualifies for logging.
+
+## 🚩 6. Recognize Suspicious PowerShell Indicators
+
+During an investigation, analysts may look for:
+
+- Unexpected PowerShell launches by document applications.
+- Unusual encoded command-line arguments.
+- Scripts launched from temporary or user-writable directories.
+- Unexpected attempts to download or execute remote content.
+- PowerShell activity followed by unusual network connections.
+- Script execution outside the user's normal work pattern.
+
+**Important:** These are investigation leads, not proof of compromise. Administrators and software installers can legitimately use many of the same techniques.
+
+Do not execute suspicious commands or scripts to test whether they are malicious.
+
+## 🔗 7. Correlate PowerShell Events with Process Creation
+
+A SOC analyst can compare PowerShell logs with Windows Security process-creation events.
+
+| Event ID | Purpose |
+|---|---|
+| 4104 | Review logged PowerShell script blocks |
+| 4688 | Investigate process creation, if auditing is enabled |
+| 4624 | Review successful logons |
+| 4698 | Investigate scheduled-task creation |
+
+### Correlation workflow
+
+```text
+PowerShell Event
+       ↓
+Identify timestamp and script details
+       ↓
+Review process-creation event (4688)
+       ↓
+Check account and related activity
+       ↓
+Assess evidence and document findings
+```
+
+These events may come from different logging channels. Match timestamps, accounts, hostnames, and process details where available; do not assume that events are automatically linked.
+
+## 🚨 8. SOC Investigation Scenario
+
+**Hypothetical alert:** An endpoint monitoring tool reports an unexpected PowerShell process running under a user's account.
+
+The analyst reviews the available PowerShell Operational events and process-creation records.
+
+Questions to investigate:
+
+1. Was the PowerShell session expected?
+2. What command line or script details are available?
+3. Which process launched PowerShell?
+4. Which user account was involved?
+5. Did the activity coincide with unusual network connections?
+6. Is there evidence of a scheduled task or other persistence mechanism?
+7. Does the evidence support a benign, suspicious, or inconclusive assessment?
+
+Do not label this scenario as a real detection unless your own logs support it.
+
+## 📝 9. SOC Incident Report Template
+
+```text
+Incident Title:
+Windows PowerShell Activity Investigation
+
+Date and Time:
+[Enter observed timestamp]
+
+Hostname:
+[Enter lab hostname]
+
+User Account:
+[Enter observed account, if available]
+
+PowerShell Event IDs:
+[Enter observed event IDs]
+
+Process and Parent Process:
+[Enter observed details, if available]
+
+Command Line or Script Details:
+[Enter relevant evidence]
+
+Related Network Activity:
+[Enter observed connections, if any]
+
+Analysis:
+[Explain what the evidence shows]
+
+Assessment:
+[Benign / Suspicious / Inconclusive]
+
+Recommended Actions:
+1. Validate whether the activity was authorized.
+2. Correlate PowerShell and process-creation logs.
+3. Review related authentication and network activity.
+4. Preserve relevant evidence.
+5. Escalate according to incident response policy.
+
+Status:
+[Open / Investigating / Closed]
+```
+
+## 🔐 10. Safety Notes
+
+- Perform investigations on your own computer or an authorized lab.
+- Use read-only commands during initial triage.
+- Do not execute suspicious scripts or encoded commands.
+- PowerShell logs can contain sensitive data; redact it before publishing screenshots.
+- Follow organizational policies before changing logging settings.
+- Do not fabricate logs, alerts, or investigation results.
+
+## ✅ 11. Day 40 Checklist
+
+- [ ] Opened the PowerShell Operational log.
+- [ ] Learned the purpose of Event IDs 400, 403, 4103, and 4104.
+- [ ] Queried recent PowerShell events.
+- [ ] Checked for script block logging records.
+- [ ] Practiced harmless PowerShell commands.
+- [ ] Learned how to correlate PowerShell activity with Event ID 4688.
+- [ ] Prepared a SOC investigation report based on actual evidence.
+
+## 🎤 12. SOC Interview Questions
+
+**Q1. What is PowerShell?**  
+A command-line shell and scripting language used for administration and automation on Windows.
+
+**Q2. What is Event ID 4104?**  
+It records PowerShell script block logging information when the relevant logging is configured.
+
+**Q3. Why is PowerShell monitored by SOC teams?**  
+Because it is a legitimate administrative tool that can also be abused to perform suspicious actions.
+
+**Q4. What is script block logging?**  
+A logging feature that records information about PowerShell script blocks that are processed.
+
+**Q5. Why correlate Event ID 4104 with Event ID 4688?**  
+To compare script activity with process execution and build a more complete timeline.
+
+**Q6. Does an encoded PowerShell command automatically mean malware?**  
+No. It is a signal to investigate the command's context, source, purpose, and related behavior.
+
+## 📌 Day 40 Outcome
+
+Today I learned how to inspect PowerShell Operational logs, query script-related events, recognize suspicious indicators, and correlate PowerShell activity with Windows process-creation events.
+
+**Next:** Day 41 — Windows Network Connection Monitoring & Suspicious Outbound Traffic Investigation.
+
+#CyberSecurity #SOCAnalyst #PowerShell #WindowsSecurity #EventLogs #ThreatHunting #BlueTeam #180DaysCybersecurityChallenge
