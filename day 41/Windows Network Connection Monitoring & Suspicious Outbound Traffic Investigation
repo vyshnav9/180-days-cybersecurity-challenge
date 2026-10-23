@@ -1,0 +1,206 @@
+# Day 41 — Windows Network Connection Monitoring & Suspicious Outbound Traffic Investigation
+
+## 🎯 Objective
+
+Learn how to monitor Windows network connections, identify which processes communicate over the network, and investigate potentially suspicious outbound traffic using PowerShell.
+
+## 📚 1. Concepts Learned
+
+- **Local IP address:** The IP address assigned to your computer for a connection.
+- **Local port:** The port used by your computer.
+- **Remote IP address:** The destination IP address your computer communicates with.
+- **Remote port:** The destination service port.
+- **Owning PID:** The process ID associated with a network connection.
+- **Outbound traffic:** Network communication initiated from your computer toward another system.
+- **Established connection:** A TCP connection that has been established.
+
+**SOC investigation workflow:**
+
+`Network Connection → Identify PID → Investigate Process → Review Destination → Document Findings`
+
+## 🛠️ 2. Practical Lab — Monitor Active TCP Connections
+
+Open **PowerShell** on your Windows computer.
+
+### Step 1: View established TCP connections
+
+```powershell
+Get-NetTCPConnection -State Established |
+Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess
+```
+
+This displays established TCP connections and the process ID responsible for each connection.
+
+### Step 2: Identify the process name
+
+```powershell
+Get-NetTCPConnection -State Established |
+ForEach-Object {
+    $connection = $_
+    $process = Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue
+
+    [PSCustomObject]@{
+        ProcessName  = $process.ProcessName
+        PID          = $connection.OwningProcess
+        LocalAddress = $connection.LocalAddress
+        LocalPort    = $connection.LocalPort
+        RemoteIP     = $connection.RemoteAddress
+        RemotePort   = $connection.RemotePort
+    }
+} | Format-Table -AutoSize
+```
+
+**What to investigate:**
+- Which process owns the connection?
+- What is the remote IP address?
+- Which remote port is being used?
+- Does the connection match an application you recognize?
+
+### Step 3: Inspect a process by PID
+
+Replace `1234` with a PID from your results.
+
+```powershell
+Get-CimInstance Win32_Process -Filter "ProcessId = 1234" |
+Select-Object ProcessId, Name, ExecutablePath, CommandLine
+```
+
+This helps you inspect the process name, executable location, and command line when Windows permissions allow access.
+
+### Step 4: View listening TCP ports
+
+```powershell
+Get-NetTCPConnection -State Listen |
+Select-Object LocalAddress, LocalPort, OwningProcess
+```
+
+A listening port means a process is waiting for incoming TCP connections. It does not automatically mean the port is exposed to the internet.
+
+### Step 5: Inspect UDP endpoints
+
+```powershell
+Get-NetUDPEndpoint |
+Select-Object LocalAddress, LocalPort, OwningProcess
+```
+
+UDP endpoints do not have TCP-style connection states. DNS, for example, commonly uses UDP port 53.
+
+### Step 6: Inspect the DNS cache
+
+```powershell
+Get-DnsClientCache |
+Select-Object Entry, Data, Type, TimeToLive
+```
+
+This can show cached DNS entries. Results depend on recent activity and may be empty.
+
+### Step 7: Check Windows Firewall profiles
+
+```powershell
+Get-NetFirewallProfile |
+Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction
+```
+
+Review whether the firewall profiles are enabled and what their default inbound and outbound actions are.
+
+## 🔎 3. SOC Investigation Checklist
+
+When you find an unfamiliar connection, investigate before drawing conclusions.
+
+- [ ] Record the timestamp and connection details.
+- [ ] Identify the process name and PID.
+- [ ] Inspect the executable path and command line.
+- [ ] Determine whether the application is expected.
+- [ ] Review the destination IP and remote port.
+- [ ] Check whether the destination is associated with a known service.
+- [ ] Correlate with DNS, firewall, endpoint, or security logs if available.
+- [ ] Record evidence and recommend further investigation if necessary.
+
+**Important:** An unfamiliar IP address or unusual port alone does not prove malicious activity. Legitimate browsers, cloud applications, updates, and security tools may create many connections.
+
+## 🧪 4. Practical Task
+
+Run the commands above on your own Windows computer.
+
+Choose one connection you can identify, such as a browser or another application. Record:
+
+1. Process name
+2. PID
+3. Local port
+4. Remote IP address
+5. Remote port
+6. Why you believe the connection is expected
+
+If you find an unfamiliar connection, document it as **“Needs investigation”** rather than immediately labeling it malicious.
+
+## 📝 5. Sample Investigation Report
+
+Use this template and replace the placeholders with your actual findings.
+
+| Field | Finding |
+|---|---|
+| Investigation | Windows network connection monitoring |
+| Timestamp | Actual date and time observed |
+| Process | Actual process name |
+| PID | Actual process ID |
+| Remote IP | Actual destination IP |
+| Remote port | Actual destination port |
+| Assessment | Expected / Needs investigation |
+| Evidence | PowerShell output or screenshot |
+| Next action | Validate process, destination, and related logs |
+
+Do not claim that suspicious traffic was detected unless your evidence supports that conclusion.
+
+## 💡 6. SOC Interview Questions
+
+**Q1. What is the difference between a local port and a remote port?**
+
+A local port belongs to the local endpoint of the connection; a remote port belongs to the destination endpoint.
+
+**Q2. How do you identify the process responsible for a network connection?**
+
+Use `Get-NetTCPConnection` to obtain the owning PID, then use `Get-Process` or `Get-CimInstance Win32_Process` to investigate the process.
+
+**Q3. Does an established connection indicate malware?**
+
+No. Legitimate applications routinely establish network connections. Context and additional evidence are required.
+
+**Q4. What is the difference between a listening port and an established connection?**
+
+A listening TCP socket waits for incoming connections; an established connection represents an active TCP session.
+
+**Q5. What would you do if an unfamiliar process connects to an unfamiliar destination?**
+
+Record the evidence, investigate the process path and command line, validate the destination, correlate security logs, and follow the incident-response escalation procedure if warranted.
+
+## ✅ 7. Day 41 Completion Checklist
+
+- [ ] Viewed established TCP connections.
+- [ ] Mapped a connection to its process ID.
+- [ ] Inspected listening TCP ports.
+- [ ] Reviewed UDP endpoints and DNS cache.
+- [ ] Checked Windows Firewall profiles.
+- [ ] Documented one real observation.
+- [ ] Saved genuine terminal output or screenshots.
+
+## 📸 8. Evidence to Upload to GitHub
+
+Suggested folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-41/
+    ├── README.md
+    └── screenshots/
+        ├── established-connections.png
+        ├── process-investigation.png
+        └── firewall-profiles.png
+```
+
+Capture your own outputs. Hide public IP details, usernames, computer names, or other sensitive information before publishing screenshots.
+
+## 🚀 Key Takeaway
+
+Today I practiced Windows network connection monitoring using PowerShell, correlated TCP connections with process IDs, inspected UDP endpoints and DNS cache entries, and reviewed Windows Firewall profiles. These skills support endpoint investigation and SOC alert triage.
+
+**Next:** Day 42 — Windows Firewall Log Analysis & Network Traffic Investigation.
