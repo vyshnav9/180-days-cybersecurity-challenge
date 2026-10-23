@@ -1,0 +1,273 @@
+# Day 38 — Windows Persistence Mechanisms & Startup Activity Monitoring
+
+## 🎯 Objective
+
+Learn how to investigate Windows startup activity and identify potentially suspicious persistence mechanisms.
+
+Today's goals:
+- Understand persistence in cybersecurity.
+- Inspect Windows startup applications.
+- Investigate scheduled tasks and Windows services.
+- Review Run registry keys.
+- Document suspicious findings like a SOC analyst.
+
+## 🧠 1. What Is Persistence?
+
+**Persistence** is a technique that allows software or an attacker to maintain access to a system across events such as a reboot or user sign-in.
+
+Legitimate applications also use startup mechanisms. SOC analysts investigate whether the configuration, executable, account, and behavior are expected.
+
+Common Windows persistence locations include:
+
+| Mechanism | Purpose |
+|---|---|
+| Startup folders | Run applications when a user signs in |
+| Run registry keys | Start programs at user sign-in |
+| Scheduled tasks | Run programs on a schedule or when a trigger occurs |
+| Windows services | Run background services |
+| Startup scripts | Run scripts during sign-in or system startup |
+
+**Investigation flow:**
+
+`Identify Startup Entry → Inspect Configuration → Validate Executable → Correlate Activity → Report Findings`
+
+## 🔍 2. Inspect Startup Applications
+
+### Method A: Task Manager
+
+1. Press `Ctrl + Shift + Esc`.
+2. Select **Startup apps**.
+3. Review application names and publishers.
+4. Note unfamiliar entries for further investigation.
+
+An unfamiliar entry is not automatically malicious. Check its publisher, file location, and purpose.
+
+### Method B: Startup folders
+
+Press `Win + R` and open:
+
+```text
+shell:startup
+```
+
+This opens the current user's Startup folder.
+
+To inspect the common Startup folder, open:
+
+```text
+shell:common startup
+```
+
+Record any unexpected shortcuts or executables. Do not delete entries before investigating them.
+
+## 💻 3. Find Startup Programs with PowerShell
+
+Run PowerShell:
+
+```powershell
+Get-CimInstance Win32_StartupCommand |
+Select-Object Name, Command, Location, User |
+Format-List
+```
+
+This command lists startup commands exposed through Windows' startup inventory.
+
+Review:
+- `Name`: startup entry name.
+- `Command`: command or executable configured to run.
+- `Location`: registry or startup location.
+- `User`: associated user, if available.
+
+Some fields may be blank, and this inventory does not cover every persistence mechanism.
+
+## 🗓️ 4. Investigate Scheduled Tasks
+
+Scheduled tasks can run applications at specified times or in response to system events.
+
+### List scheduled tasks
+
+```powershell
+Get-ScheduledTask |
+Select-Object TaskName, TaskPath, State |
+Format-Table -AutoSize
+```
+
+### Inspect a particular task
+
+Replace the example task name and path with a real entry from your results:
+
+```powershell
+Get-ScheduledTask -TaskName "ExampleTask" -TaskPath "\" |
+Select-Object TaskName, TaskPath, State, Actions, Triggers |
+Format-List
+```
+
+If that task does not exist, the command will not return the intended details. Use an actual task name and path from your computer.
+
+### What should a SOC analyst inspect?
+
+- Is the task expected?
+- Who created or configured it, if this information is available?
+- Does the action point to a legitimate executable or script?
+- Does it run under an unexpected account?
+- Does its trigger make sense for the system?
+- Are there related process or network events?
+
+## 🧰 5. Inspect Windows Services
+
+Services commonly run background components and are often legitimate. Unexpected services or unusual executable paths deserve closer examination.
+
+### List services
+
+```powershell
+Get-CimInstance Win32_Service |
+Select-Object Name, DisplayName, State, StartMode, StartName, PathName |
+Format-Table -Wrap -AutoSize
+```
+
+Important fields:
+
+- `Name`: service identifier.
+- `DisplayName`: human-readable name.
+- `State`: current state.
+- `StartMode`: startup configuration.
+- `StartName`: account used to run the service.
+- `PathName`: executable command used by the service.
+
+Look for services with unexplained names, unexpected accounts, or unusual executable paths. Validate findings before drawing conclusions.
+
+## 🗝️ 6. Review Run Registry Keys
+
+Windows registry Run keys can configure programs to launch when a user signs in.
+
+The following commands **read** common Run-key locations:
+
+```powershell
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+```
+
+```powershell
+reg query "HKLM\Software\Microsoft\Windows\CurrentVersion\Run"
+```
+
+- `HKCU`: current user's configuration.
+- `HKLM`: machine-wide configuration.
+
+A key may not exist or may contain no entries. That does not establish that the system is compromised or completely free of persistence.
+
+Avoid changing or deleting registry values during initial investigation.
+
+## 🚨 7. SOC Investigation Scenario
+
+**Hypothetical alert:** An endpoint monitoring system reports a scheduled task that launches a script from a user's temporary directory whenever that user signs in.
+
+Investigate the entry by asking:
+
+1. Is the task expected and approved?
+2. What executable or script does the task launch?
+3. Is the file signed, known, and located where expected?
+4. What user account runs the task?
+5. When was the task created or modified, if that information is available?
+6. Does process or network telemetry show suspicious activity around its execution?
+
+### Example assessment
+
+| Finding | Interpretation |
+|---|---|
+| Unknown task name | Requires validation |
+| Script in a temporary folder | May be suspicious; investigate context |
+| Unexpected sign-in trigger | Requires further review |
+| Related unusual network connection | Additional evidence to correlate |
+
+**Conclusion:** No single indicator proves malicious persistence. Assess the complete evidence and the device's normal behavior.
+
+## 📝 8. SOC Investigation Report Template
+
+Use this template only after reviewing actual evidence.
+
+```text
+Incident Title:
+Windows Startup or Persistence Investigation
+
+Date and Time:
+[Enter observed timestamp]
+
+Hostname:
+[Enter lab hostname]
+
+Persistence Mechanism:
+[Startup entry / Scheduled task / Service / Registry]
+
+Entry Name:
+[Enter actual entry name]
+
+Executable or Script Path:
+[Enter observed path]
+
+User or Execution Account:
+[Enter observed account, if available]
+
+Trigger or Startup Type:
+[Enter observed configuration]
+
+Evidence:
+[Commands, relevant output, event IDs, and timestamps]
+
+Assessment:
+[Benign / Suspicious / Inconclusive]
+
+Recommended Actions:
+1. Validate the entry with the system owner.
+2. Inspect the executable or script.
+3. Correlate with process and network activity.
+4. Preserve evidence and escalate according to policy if needed.
+
+Status:
+[Open / Investigating / Closed]
+```
+
+## 🔐 9. Safety Notes
+
+- Run these commands only on your own Windows computer or an authorized lab.
+- Prefer read-only inspection during initial triage.
+- Do not delete unfamiliar tasks, registry keys, or services without validation.
+- Do not publish usernames, internal paths, or sensitive system details in public screenshots.
+- This exercise focuses on detecting and investigating persistence, not installing persistence mechanisms.
+
+## ✅ 10. Day 38 Checklist
+
+- [ ] Inspected Startup apps in Task Manager.
+- [ ] Checked the Startup folders.
+- [ ] Listed startup commands with PowerShell.
+- [ ] Reviewed scheduled tasks.
+- [ ] Inspected Windows services and executable paths.
+- [ ] Queried the common Run registry keys.
+- [ ] Documented findings without assuming unfamiliar entries are malicious.
+
+## 🎤 11. SOC Interview Questions
+
+**Q1. What is persistence?**  
+A technique that allows software or an attacker to maintain access across restarts or sign-ins.
+
+**Q2. Name three Windows persistence locations.**  
+Startup folders, Run registry keys, and scheduled tasks. Windows services can also be used.
+
+**Q3. Why investigate scheduled tasks?**  
+They can execute programs automatically based on configured triggers.
+
+**Q4. Is every unknown startup program malicious?**  
+No. Validate its publisher, location, purpose, configuration, and behavior.
+
+**Q5. Why inspect a service's executable path?**  
+It helps establish what code the service runs and whether the location is expected.
+
+**Q6. What should a SOC analyst do after finding a suspicious entry?**  
+Preserve relevant evidence, correlate associated events, assess impact, and escalate according to incident response procedures.
+
+## 📌 Day 38 Outcome
+
+Today I practiced Windows startup inventory, scheduled-task review, service inspection, and Run registry-key checks using built-in Windows tools.
+
+**Next:** Day 39 — Windows Security Event Logs for Process Creation and Persistence Investigation.
+
+#CyberSecurity #SOCAnalyst #WindowsSecurity #PowerShell #ThreatHunting #BlueTeam #180DaysCybersecurityChallenge
