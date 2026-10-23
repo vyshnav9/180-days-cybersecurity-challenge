@@ -1,0 +1,274 @@
+# Day 39 — Windows Process Creation & Persistence Investigation Using Event Logs
+
+## 🎯 Objective
+
+Learn how to investigate Windows process execution using Security Event Logs and connect the findings to persistence-related activity.
+
+Today's goals:
+- Understand Windows process-creation logging.
+- Learn Event ID 4688.
+- Query Windows Security logs using PowerShell.
+- Investigate suspicious process execution.
+- Correlate process events with scheduled tasks and startup activity.
+- Prepare an evidence-based SOC report.
+
+## 🧠 1. What Is Process Creation Monitoring?
+
+Process creation monitoring records information about programs launched on a Windows system.
+
+SOC analysts can use it to investigate:
+- Unexpected command-line tools.
+- Unusual parent-child process relationships.
+- Suspicious script execution.
+- Programs launched by scheduled tasks.
+- Possible malware execution.
+
+**Investigation flow:**
+
+`Security Event Logs → Process Creation → Parent/Child Analysis → Correlation → Incident Report`
+
+## 📋 2. Important Windows Event IDs
+
+| Event ID | Meaning | SOC use |
+|---|---|---|
+| 4688 | A new process was created | Investigate process execution |
+| 4697 | A service was installed | Investigate unexpected service installation |
+| 4698 | A scheduled task was created | Investigate possible persistence |
+| 4702 | A scheduled task was updated | Review unexpected task changes |
+| 4624 | A successful logon occurred | Identify relevant logon activity |
+| 4625 | A failed logon occurred | Investigate authentication failures |
+
+These events may not be recorded unless the relevant auditing is enabled and configured. Availability can also depend on Windows version and system configuration.
+
+## 🔍 3. Check Process Creation Auditing
+
+Open **PowerShell as Administrator** and run:
+
+```powershell
+auditpol /get /subcategory:"Process Creation"
+```
+
+Check whether process-creation auditing is enabled.
+
+To enable success auditing on your own lab computer, if permitted, run:
+
+```powershell
+auditpol /set /subcategory:"Process Creation" /success:enable
+```
+
+This changes the local audit policy. Do not change audit settings on a managed device without authorization.
+
+### Enable command-line logging (optional)
+
+Event ID 4688 may not contain the full command line unless the corresponding policy is enabled.
+
+On supported Windows editions, open:
+
+`Local Security Policy → Advanced Audit Policy Configuration → System Audit Policies → Detailed Tracking → Audit Process Creation`
+
+Enable **Success** auditing.
+
+Then navigate to:
+
+`Local Security Policy → Administrative Templates → System → Audit Process Creation`
+
+Enable **Include command line in process creation events** if appropriate for your lab.
+
+**Privacy note:** Command lines may contain sensitive data. Use this setting only when appropriate and protect the resulting logs.
+
+## 💻 4. Search for Event ID 4688
+
+Run this PowerShell command:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id = 4688
+} -MaxEvents 10 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+This retrieves recent process-creation events if they exist.
+
+If the command returns no results:
+- Process creation may not have been logged.
+- The event may not exist in the available time range.
+- The Security log may not be accessible.
+- The log may have been cleared or overwritten.
+
+No results alone do not prove malicious activity.
+
+## 🧪 5. Generate a Benign Test Event
+
+After enabling the appropriate auditing, open a normal Command Prompt and run:
+
+```cmd
+notepad.exe
+```
+
+Close Notepad when finished.
+
+Then run the Event ID 4688 query again in PowerShell.
+
+If process-creation auditing is configured correctly, the launch may generate an event for `notepad.exe`. Depending on the configuration, other process-creation events may also appear.
+
+If no event appears, check the auditing configuration and Security log rather than assuming the test succeeded.
+
+## 🔗 6. Investigate Parent and Child Processes
+
+Event ID 4688 can include process details such as the new process name and, when available, the creator process name.
+
+To inspect recent process events:
+
+```powershell
+$events = Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id = 4688
+} -MaxEvents 20 -ErrorAction SilentlyContinue
+
+$events | Select-Object TimeCreated, Id, Message | Format-List
+```
+
+Review the event details for:
+- New process name.
+- Creator process name.
+- Process ID.
+- Account information.
+- Command line, if command-line auditing is enabled.
+
+The event's XML fields can vary with Windows versions and audit settings. Treat the event message and available details as evidence, and do not assume every field will be populated.
+
+## 🗓️ 7. Correlate Process Events with Persistence
+
+A SOC analyst may compare process-creation events with scheduled-task or service installation events.
+
+For example, an investigation might examine:
+
+```text
+Event ID 4698 — Scheduled task created
+             ↓
+Event ID 4688 — Process launched
+             ↓
+Related network or authentication activity
+             ↓
+Analyst assessment
+```
+
+This is an investigation model, not proof that the events occurred on your computer.
+
+### Questions to ask
+
+1. Was a scheduled task or service created unexpectedly?
+2. Which executable or script did it reference?
+3. Was a related process observed afterward?
+4. Do the timestamps and accounts align?
+5. Is the activity approved and expected?
+6. Is there corroborating evidence from other logs?
+
+## 🚨 8. SOC Investigation Scenario
+
+**Hypothetical alert:** A monitoring system reports an unexpected scheduled task that launches a script at user sign-in.
+
+The analyst finds a task-creation event and investigates process-creation events around the relevant time.
+
+| Evidence | Investigation question |
+|---|---|
+| Event ID 4698 | What task was created, and by whom? |
+| Event ID 4688 | Was a related process launched? |
+| Executable or script path | Is the location expected? |
+| Account and timestamp | Do they match the task's context? |
+| Network activity | Was there related outbound communication? |
+
+**Assessment:** Classify the activity as benign, suspicious, or inconclusive based on the evidence. A scheduled task or process event alone does not prove compromise.
+
+## 📝 9. SOC Incident Report Template
+
+Use this template only after reviewing actual logs.
+
+```text
+Incident Title:
+Windows Process Creation and Persistence Investigation
+
+Hostname:
+[Enter lab hostname]
+
+Investigation Time:
+[Enter timestamp]
+
+Relevant Event IDs:
+[Enter observed event IDs]
+
+Process Name:
+[Enter observed process name]
+
+Parent Process:
+[Enter observed parent process, if available]
+
+Related Scheduled Task or Service:
+[Enter observed details, if applicable]
+
+Account:
+[Enter observed account, if available]
+
+Evidence:
+[Summarize actual events and timestamps]
+
+Assessment:
+[Benign / Suspicious / Inconclusive]
+
+Recommended Actions:
+1. Validate the process and persistence entry.
+2. Correlate process, task, service, and authentication events.
+3. Preserve relevant evidence.
+4. Escalate according to incident response procedures.
+
+Status:
+[Open / Investigating / Closed]
+```
+
+## 🔐 10. Safety Notes
+
+- Perform this exercise only on your own device or an authorized lab.
+- Prefer read-only queries during investigation.
+- Do not create malicious scheduled tasks or services for testing.
+- Do not publish sensitive command lines or usernames in public screenshots.
+- Do not report hypothetical events as real detections.
+
+## ✅ 11. Day 39 Checklist
+
+- [ ] Checked process-creation auditing.
+- [ ] Learned the purpose of Event ID 4688.
+- [ ] Queried the Security log with PowerShell.
+- [ ] Tested process logging with Notepad.
+- [ ] Reviewed available parent and child process information.
+- [ ] Learned how to correlate process events with persistence events.
+- [ ] Prepared a SOC investigation report.
+
+## 🎤 12. SOC Interview Questions
+
+**Q1. What is Windows Event ID 4688?**  
+It records that a new process was created.
+
+**Q2. Why might the command line be missing from Event ID 4688?**  
+Command-line inclusion may not be enabled, or the information may not be available for that event.
+
+**Q3. What is Event ID 4698?**  
+It records the creation of a scheduled task.
+
+**Q4. Why correlate process creation with scheduled-task events?**  
+It can help establish whether a task was created and whether related processes subsequently ran.
+
+**Q5. Does an unusual parent-child process relationship prove malware?**  
+No. It is an indicator to investigate in context.
+
+**Q6. What should you do if no Event ID 4688 records appear?**  
+Check the audit policy, log access, event availability, and whether the test generated a new event.
+
+## 📌 Day 39 Outcome
+
+Today I learned how Windows process-creation logging works, how to query Event ID 4688, and how to correlate process activity with scheduled-task and service events during SOC investigations.
+
+**Next:** Day 40 — Windows PowerShell Log Analysis and Suspicious Script Activity Investigation.
+
+#CyberSecurity #SOCAnalyst #WindowsEventLogs #PowerShell #ThreatHunting #BlueTeam #180DaysCybersecurityChallenge
