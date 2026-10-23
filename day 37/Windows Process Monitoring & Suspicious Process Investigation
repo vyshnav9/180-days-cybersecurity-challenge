@@ -1,0 +1,278 @@
+# Day 37 — Windows Process Monitoring & Suspicious Process Investigation
+
+## 🎯 Objective
+
+Learn how SOC analysts monitor Windows processes and investigate potentially suspicious activity.
+
+Today's goals:
+- Understand Windows processes and process IDs (PIDs).
+- Identify process names, paths, and resource usage.
+- Investigate parent-child process relationships.
+- Recognize suspicious process behavior.
+- Practice basic process investigation using PowerShell.
+
+## 🧠 1. What Is a Process?
+
+A **process** is a running instance of a program.
+
+Examples:
+- `explorer.exe` — Windows desktop and File Explorer.
+- `notepad.exe` — Notepad.
+- `powershell.exe` — PowerShell command-line environment.
+- `cmd.exe` — Windows Command Prompt.
+- `msedge.exe` — Microsoft Edge browser.
+
+A process normally has a Process ID (PID), which helps distinguish it from other running processes.
+
+**SOC investigation flow:**
+
+`Process Alert → Collect Details → Check Parent Process → Review Command Line → Assess Risk`
+
+## 🔍 2. View Running Processes
+
+Open PowerShell and run:
+
+### A. List running processes
+
+```powershell
+Get-Process |
+Select-Object ProcessName, Id, CPU, WorkingSet64 |
+Sort-Object CPU -Descending |
+Select-Object -First 15
+```
+
+This displays process names, PIDs, CPU usage, and memory usage.
+
+### B. Find a particular process
+
+```powershell
+Get-Process -Name notepad -ErrorAction SilentlyContinue
+```
+
+If Notepad is not running, the command may return no results. Open Notepad and run it again if you want to test the command.
+
+### C. Display process IDs and parent process IDs
+
+```powershell
+Get-CimInstance Win32_Process |
+Select-Object ProcessId, ParentProcessId, Name |
+Format-Table -AutoSize
+```
+
+- `ProcessId`: ID of the current process.
+- `ParentProcessId`: ID of the process that started it.
+- `Name`: executable filename.
+
+## 🌳 3. Understand Parent-Child Relationships
+
+Processes often start other processes.
+
+Example:
+
+```text
+explorer.exe
+    └── notepad.exe
+```
+
+A more security-relevant example to investigate is:
+
+```text
+winword.exe
+    └── powershell.exe
+```
+
+A document application starting PowerShell may be unusual in some environments. However, **the relationship alone does not prove malicious activity**; legitimate administrative workflows and automation can also create unusual process chains.
+
+Investigate:
+- Which process launched the child?
+- What command line was used?
+- Where is the executable located?
+- Was the activity expected?
+- Did the process create network connections or additional child processes?
+
+## 🛠️ 4. Inspect a Process in Detail
+
+Use this PowerShell command to find PowerShell processes and their command lines:
+
+```powershell
+Get-CimInstance Win32_Process |
+Where-Object { $_.Name -match '^powershell\.exe$|^pwsh\.exe$' } |
+Select-Object ProcessId, ParentProcessId, ExecutablePath, CommandLine |
+Format-List
+```
+
+Some fields may be blank or unavailable due to permissions or process type.
+
+To inspect one process by PID, replace `1234` with an actual PID from your computer:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "ProcessId = 1234" |
+Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine |
+Format-List
+```
+
+Do not assume PID `1234` exists on your computer.
+
+## 🚨 5. What Makes a Process Suspicious?
+
+A process deserves investigation when its behavior is unusual for the device or user.
+
+Potential warning signs include:
+
+- An unexpected executable running from a temporary or user-writable folder.
+- A document or script application launching an unexpected command interpreter.
+- An unfamiliar process with an unusual command line.
+- A process running under an unexpected account.
+- Unexpected outbound network connections.
+- A process name that imitates a legitimate Windows executable but runs from an unusual path.
+
+**Important:** A filename alone is not enough to determine whether a process is malicious. Check the full path, digital signature, parent process, command line, user context, and surrounding activity.
+
+## 🌐 6. Check Process Network Connections
+
+First, list active TCP connections:
+
+```powershell
+Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue |
+Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess
+```
+
+The `OwningProcess` field is the PID associated with the connection.
+
+To map connection PIDs to process names:
+
+```powershell
+$connections = Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue
+
+$connections | ForEach-Object {
+    $connection = $_
+    $process = Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue
+
+    [PSCustomObject]@{
+        ProcessName  = $process.ProcessName
+        PID          = $connection.OwningProcess
+        LocalAddress = $connection.LocalAddress
+        LocalPort    = $connection.LocalPort
+        RemoteAddress = $connection.RemoteAddress
+        RemotePort   = $connection.RemotePort
+    }
+} | Format-Table -AutoSize
+```
+
+If no connections appear, there may be no established TCP connections at that moment. This is not proof that the system is compromised or completely safe.
+
+## 📋 7. SOC Investigation Scenario
+
+**Hypothetical alert:** An endpoint monitoring system reports that an office document application launched PowerShell.
+
+Investigate the following:
+
+1. Identify the parent and child process.
+2. Record the process IDs and executable paths.
+3. Review the command line, if available.
+4. Check whether the activity matches an approved workflow.
+5. Review related network connections and other endpoint events.
+6. Record the evidence and escalate according to policy if suspicious.
+
+### Example investigation table
+
+| Field | What to record |
+|---|---|
+| Alert time | Timestamp from the actual alert |
+| Parent process | Observed parent process name and PID |
+| Child process | Observed child process name and PID |
+| Executable path | Actual path, if available |
+| Command line | Actual command line, if available |
+| Network activity | Related connections, if any |
+| Assessment | Benign, suspicious, or inconclusive—with reasons |
+
+Do not create a fake alert or report this hypothetical scenario as a real detection.
+
+## 📝 8. SOC Incident Report Template
+
+```text
+Incident Title:
+Suspicious Windows Process Investigation
+
+Date and Time:
+[Enter observed timestamp]
+
+Hostname:
+[Enter lab hostname]
+
+Process Name and PID:
+[Enter observed details]
+
+Parent Process:
+[Enter observed name and PID]
+
+Executable Path:
+[Enter actual path, if available]
+
+Command Line:
+[Enter actual command line, if available]
+
+Related Network Activity:
+[Enter observed connections or "Not observed"]
+
+Evidence:
+[Summarize the commands and results]
+
+Assessment:
+[Benign / Suspicious / Inconclusive]
+
+Recommended Actions:
+1. Validate the process and its business purpose.
+2. Review the executable path and command line.
+3. Correlate parent-child activity and network connections.
+4. Escalate according to the organization's incident response policy.
+
+Status:
+[Open / Investigating / Closed]
+```
+
+## 🔐 9. Safety and Investigation Notes
+
+- Run investigation commands on your own Windows device or an authorized lab.
+- Prefer read-only commands during initial triage.
+- Do not terminate processes simply because their names look unfamiliar.
+- Do not upload command lines or logs containing passwords, tokens, or personal information.
+- A suspicious indicator requires investigation; it is not automatically proof of compromise.
+
+## ✅ 10. Day 37 Checklist
+
+- [ ] Listed running processes using PowerShell.
+- [ ] Learned the difference between PID and ParentProcessId.
+- [ ] Inspected process paths and command lines.
+- [ ] Reviewed parent-child process relationships.
+- [ ] Listed established TCP connections.
+- [ ] Learned how to correlate network connections with process IDs.
+- [ ] Prepared an evidence-based investigation report.
+
+## 🎤 11. SOC Interview Questions
+
+**Q1. What is a process?**  
+A running instance of a program.
+
+**Q2. What is a PID?**  
+A Process ID used to identify a running process.
+
+**Q3. What is a parent-child process relationship?**  
+A relationship in which one process starts another process.
+
+**Q4. Why can a document application launching PowerShell be suspicious?**  
+It may be unexpected behavior that requires investigation, especially if the command line or surrounding activity is unusual.
+
+**Q5. How can you identify which process owns a TCP connection?**  
+Use `Get-NetTCPConnection` and correlate its `OwningProcess` PID with process information.
+
+**Q6. Does an unfamiliar process name prove malware?**  
+No. Validate the path, signature, command line, user context, and surrounding behavior.
+
+## 📌 Day 37 Outcome
+
+Today I practiced Windows process enumeration, parent-child process analysis, command-line inspection, and process-to-network correlation using PowerShell.
+
+**Next:** Day 38 — Windows Persistence Mechanisms & Startup Activity Monitoring.
+
+#CyberSecurity #SOCAnalyst #WindowsSecurity #PowerShell #ProcessMonitoring #BlueTeam #180DaysCybersecurityChallenge
