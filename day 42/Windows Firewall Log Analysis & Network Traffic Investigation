@@ -1,0 +1,247 @@
+# Day 42 — Windows Firewall Log Analysis & Network Traffic Investigation
+
+## 🎯 Objective
+
+Learn how to inspect Windows Firewall settings, enable firewall logging in a controlled lab, analyze permitted and blocked traffic, and recognize network activity that may need further investigation.
+
+## 📚 1. Concepts Learned
+
+- **Windows Defender Firewall:** Controls inbound and outbound network traffic according to firewall rules.
+- **Inbound traffic:** Traffic coming into your computer.
+- **Outbound traffic:** Traffic leaving your computer.
+- **Allowed traffic:** Traffic permitted by the firewall rules.
+- **Blocked traffic:** Traffic denied by the firewall.
+- **Firewall logs:** Records that can help investigators understand network activity.
+
+### SOC investigation workflow
+
+`Firewall Configuration → Collect Logs → Filter Events → Investigate → Document Findings`
+
+## 🛠️ 2. Practical Lab
+
+Use your own Windows computer or an authorized lab machine. Some commands require **PowerShell opened as Administrator**.
+
+### Step 1: Check firewall status
+
+```powershell
+Get-NetFirewallProfile |
+Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction
+```
+
+Check the firewall status for Domain, Private, and Public profiles.
+
+**Important:** Do not disable Windows Firewall to perform this exercise.
+
+### Step 2: Inspect existing firewall rules
+
+```powershell
+Get-NetFirewallRule -Enabled True |
+Select-Object DisplayName, Direction, Action, Profile |
+Format-Table -AutoSize
+```
+
+This lists enabled rules and their direction and action.
+
+To inspect inbound block rules:
+
+```powershell
+Get-NetFirewallRule -Enabled True -Direction Inbound -Action Block |
+Select-Object DisplayName, Profile, Action
+```
+
+### Step 3: Enable firewall logging
+
+First, inspect the current logging configuration:
+
+```powershell
+Get-NetFirewallProfile |
+Select-Object Name, LogAllowed, LogBlocked, LogFileName, LogMaxSizeKilobytes
+```
+
+For a controlled lab, enable logging of blocked packets for the active profiles without changing the firewall's allow/block rules:
+
+```powershell
+Set-NetFirewallProfile -Profile Domain,Private,Public `
+-LogBlocked True -LogMaxSizeKilobytes 4096
+```
+
+Optionally enable logging of allowed connections if you need it for the exercise:
+
+```powershell
+Set-NetFirewallProfile -Profile Domain,Private,Public -LogAllowed True
+```
+
+**Note:** These settings affect firewall logging configuration. Record the original values first if you need to restore them later. Log availability depends on your Windows version, configuration, and traffic.
+
+### Step 4: Find the firewall log file
+
+```powershell
+Get-NetFirewallProfile |
+Select-Object Name, LogFileName, LogBlocked, LogAllowed
+```
+
+The default log is commonly located at:
+
+```text
+C:\Windows\System32\LogFiles\Firewall\pfirewall.log
+```
+
+Use the actual `LogFileName` shown by your system; the location may differ.
+
+### Step 5: Read recent firewall log entries
+
+If the default file exists, run:
+
+```powershell
+$log = "$env:windir\System32\LogFiles\Firewall\pfirewall.log"
+
+if (Test-Path $log) {
+    Get-Content $log -Tail 30
+} else {
+    Write-Host "Firewall log file not found. Check LogFileName and logging configuration."
+}
+```
+
+Firewall logs often contain fields such as:
+
+- `date` and `time`
+- `action` — `ALLOW` or `DROP`
+- `protocol`
+- `src-ip` and `dst-ip`
+- `src-port` and `dst-port`
+
+The log header identifies the fields and their order.
+
+### Step 6: Filter blocked traffic
+
+```powershell
+$log = "$env:windir\System32\LogFiles\Firewall\pfirewall.log"
+
+if (Test-Path $log) {
+    Get-Content $log |
+        Where-Object { $_ -match '\sDROP\s' } |
+        Select-Object -Last 20
+}
+```
+
+This filters lines containing the `DROP` action. Review the log header and confirm the format before relying on the results.
+
+If no blocked entries appear, that does not necessarily mean the firewall is malfunctioning. There may simply be no matching traffic in the available logs.
+
+### Step 7: Filter allowed traffic
+
+```powershell
+$log = "$env:windir\System32\LogFiles\Firewall\pfirewall.log"
+
+if (Test-Path $log) {
+    Get-Content $log |
+        Where-Object { $_ -match '\sALLOW\s' } |
+        Select-Object -Last 20
+}
+```
+
+Compare allowed and blocked records, noting the source, destination, protocol, ports, and timestamp.
+
+## 🔎 3. How to Investigate a Firewall Record
+
+Suppose you find a record showing a blocked connection.
+
+Ask these questions:
+
+1. What timestamp is recorded?
+2. What is the source IP address?
+3. What is the destination IP address?
+4. Which protocol and destination port were used?
+5. Was the connection inbound or outbound, based on the addresses and context?
+6. Is the activity expected for this computer?
+7. Do endpoint, DNS, or other security logs provide additional evidence?
+
+**Remember:** A blocked connection is not automatically an attack. It may be caused by a normal application, a misconfiguration, or unwanted traffic. Investigate the context before classifying it.
+
+## 🧪 4. Practical Investigation Task
+
+Complete these tasks on your own computer:
+
+- [ ] Check the status of all firewall profiles.
+- [ ] Review enabled inbound rules.
+- [ ] Inspect the firewall logging configuration.
+- [ ] Enable blocked-packet logging if appropriate for your lab.
+- [ ] Locate the configured firewall log.
+- [ ] Review the latest log entries.
+- [ ] Identify one `ALLOW` or `DROP` entry, if available.
+- [ ] Record the actual findings and save a screenshot.
+
+Do not generate harmful traffic or attempt to access systems you do not own or have permission to test.
+
+## 📝 5. Sample SOC Investigation Report
+
+Fill this template using your actual observations.
+
+| Field | Finding |
+|---|---|
+| Investigation | Windows Firewall Log Analysis |
+| Timestamp | Actual timestamp from the log |
+| Action | ALLOW / DROP / No matching record |
+| Source IP | Actual source address |
+| Destination IP | Actual destination address |
+| Protocol | Actual protocol |
+| Destination port | Actual port |
+| Assessment | Expected / Needs investigation |
+| Evidence | Screenshot or relevant log entry |
+| Next step | Correlate with firewall rules and endpoint logs |
+
+Do not invent a blocked connection if your logs contain none.
+
+## 💡 6. SOC Interview Questions
+
+**Q1. What is the purpose of Windows Defender Firewall?**
+
+It filters network traffic according to firewall rules and helps control permitted inbound and outbound communications.
+
+**Q2. What is the difference between `ALLOW` and `DROP` in a firewall log?**
+
+`ALLOW` indicates traffic permitted by the firewall, while `DROP` indicates traffic discarded by the firewall.
+
+**Q3. Does a `DROP` entry prove a cyberattack?**
+
+No. It records blocked traffic, which may be legitimate or suspicious. More evidence is needed to determine intent.
+
+**Q4. Why are firewall logs useful to SOC analysts?**
+
+They help analysts investigate connection attempts, blocked traffic, suspicious destinations, and potential policy violations.
+
+**Q5. What should you do when an unfamiliar destination appears in a log?**
+
+Validate the destination, investigate the application and process, correlate other logs, assess the risk, and escalate according to the organization's incident-response procedure.
+
+## 📸 7. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-42/
+    ├── README.md
+    └── screenshots/
+        ├── firewall-status.png
+        ├── firewall-logging-settings.png
+        └── firewall-log-analysis.png
+```
+
+Upload genuine screenshots from your own lab. Hide sensitive IP addresses, usernames, computer names, and other private information before publishing.
+
+## ✅ 8. Completion Checklist
+
+- [ ] Reviewed Windows Firewall profiles.
+- [ ] Inspected enabled firewall rules.
+- [ ] Checked or configured firewall logging.
+- [ ] Read the firewall log.
+- [ ] Filtered allowed and blocked records.
+- [ ] Documented actual findings.
+- [ ] Saved evidence for GitHub.
+
+## 🚀 Key Takeaway
+
+Today I practiced inspecting Windows Defender Firewall rules, configuring firewall logging, and reviewing allowed and blocked network traffic. These skills help SOC analysts investigate network activity and correlate firewall evidence with endpoint and security logs.
+
+**Next:** Day 43 — Windows Security Event Log Correlation & Incident Investigation.
