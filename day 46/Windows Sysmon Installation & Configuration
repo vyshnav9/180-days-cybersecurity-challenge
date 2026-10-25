@@ -1,0 +1,228 @@
+# Day 46 — Windows Sysmon Installation & Configuration
+
+## 🎯 Objective
+
+Install and configure Microsoft Sysmon, verify that it records system activity, and prepare a Windows endpoint for advanced SOC threat detection.
+
+## 📚 1. What Is Sysmon?
+
+**Sysmon (System Monitor)** is a Microsoft Sysinternals utility that monitors selected system activity and records detailed events in Windows Event Logs.
+
+SOC analysts use Sysmon to investigate:
+
+- Process creation
+- Network connections
+- File creation
+- DNS queries
+- Registry modifications
+- Other potentially suspicious system activity
+
+Unlike basic Windows logs, Sysmon can provide additional technical details about processes and their behavior.
+
+## 🛠️ 2. Practical Lab — Install Sysmon
+
+### Step 1: Download Sysmon
+
+Download Sysmon from the official Microsoft Sysinternals website:
+
+https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+
+1. Download the Sysmon ZIP package.
+2. Extract it into a folder, for example:
+
+```text
+C:\Tools\Sysmon
+```
+
+3. Open PowerShell as Administrator.
+4. Navigate to the extracted folder:
+
+```powershell
+cd C:\Tools\Sysmon
+```
+
+Adjust the path if you extracted the files elsewhere.
+
+### Step 2: Verify the download
+
+Run:
+
+```powershell
+.\Sysmon64.exe -?
+```
+
+If the executable displays its usage information, you have located the program successfully.
+
+Use the executable included in the official package; its filename may vary by package version or system architecture.
+
+### Step 3: Install Sysmon
+
+Install Sysmon with its default configuration:
+
+```powershell
+.\Sysmon64.exe -accepteula -i
+```
+
+This installs Sysmon and starts collecting the events enabled by its default configuration.
+
+**Important:** Default settings do not enable every Sysmon event type. We will configure specific events in later challenge days.
+
+### Step 4: Verify the service
+
+```powershell
+Get-Service Sysmon*
+```
+
+Check whether the Sysmon service is present and running.
+
+You can also check the installed driver:
+
+```powershell
+Get-CimInstance Win32_SystemDriver |
+Where-Object { $_.Name -like 'Sysmon*' } |
+Select-Object Name, State, StartMode
+```
+
+The driver name and available output can vary by version.
+
+## 🔍 3. Verify Sysmon Event Logging
+
+Sysmon writes its events to the following Windows event channel:
+
+```text
+Microsoft-Windows-Sysmon/Operational
+```
+
+### Step 1: Check whether the channel exists
+
+```powershell
+Get-WinEvent -ListLog 'Microsoft-Windows-Sysmon/Operational' |
+Select-Object LogName, IsEnabled, RecordCount
+```
+
+### Step 2: View recent Sysmon events
+
+```powershell
+Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -MaxEvents 10 |
+Select-Object TimeCreated, Id, ProviderName |
+Format-Table -AutoSize
+```
+
+If the channel exists but has no events, perform a benign activity and check again.
+
+### Step 3: Generate a safe test event
+
+Open Notepad:
+
+```powershell
+Start-Process notepad.exe
+```
+
+Then query for Sysmon process-creation events:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 10 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Event ID **1** represents process creation. Whether it is recorded depends on the Sysmon configuration.
+
+If no Event ID 1 appears, check the service status and configuration. Do not report a successful detection unless you can verify the event.
+
+## ⚙️ 4. Understand Sysmon Event IDs
+
+These event types will be useful in upcoming labs.
+
+| Event ID | Event type |
+|---|---|
+| 1 | Process creation |
+| 3 | Network connection |
+| 11 | File creation |
+| 12–14 | Registry events |
+| 22 | DNS query |
+
+Some event types, including network connection monitoring, may not be enabled in your current configuration. Event IDs are not a guarantee that every corresponding activity will be recorded.
+
+## 🧪 5. Practical Tasks
+
+Complete these steps on your own Windows computer:
+
+- [ ] Download Sysmon from Microsoft.
+- [ ] Install Sysmon.
+- [ ] Verify the service status.
+- [ ] Confirm the Sysmon Operational event channel exists.
+- [ ] Run Notepad as a benign test.
+- [ ] Search for Event ID 1.
+- [ ] Save a screenshot of the actual results.
+- [ ] Record any configuration issues.
+
+## 📝 6. Lab Report
+
+Complete this table with your real observations.
+
+| Item | Your result |
+|---|---|
+| Operating system | Your Windows version |
+| Sysmon installed | Yes / No |
+| Service status | Actual status |
+| Event channel | Enabled / Disabled / Not found |
+| Event ID 1 observed | Yes / No |
+| Evidence | Screenshot filename |
+| Issues | Actual errors or limitations |
+
+## 💡 7. SOC Interview Questions
+
+**Q1. What is Sysmon?**
+
+Sysmon is a Microsoft Sysinternals utility that records detailed system activity in Windows Event Logs.
+
+**Q2. Where are Sysmon events stored?**
+
+In `Microsoft-Windows-Sysmon/Operational`.
+
+**Q3. What does Sysmon Event ID 1 represent?**
+
+Process creation, including details such as process image and process identifiers.
+
+**Q4. Does installing Sysmon automatically enable every event type?**
+
+No. The recorded event types depend on the active Sysmon configuration.
+
+**Q5. How is Sysmon useful to a SOC analyst?**
+
+It provides detailed telemetry that helps analysts investigate process execution, network activity, DNS queries, file activity, and registry changes.
+
+## 📸 8. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-46/
+    ├── README.md
+    └── screenshots/
+        ├── sysmon-installation.png
+        ├── sysmon-service-status.png
+        └── sysmon-event-viewer.png
+```
+
+Capture genuine screenshots from your lab. Hide usernames, machine names, and other sensitive details before uploading.
+
+## ✅ 9. Completion Checklist
+
+- [ ] Installed Sysmon from the official source.
+- [ ] Verified service status.
+- [ ] Checked the Sysmon Operational channel.
+- [ ] Tested process-creation event logging.
+- [ ] Documented actual results.
+- [ ] Saved screenshots for GitHub.
+
+## 🚀 Key Takeaway
+
+Today I installed Microsoft Sysmon, verified its service and event channel, and tested process-creation logging. This establishes the foundation for advanced Windows endpoint monitoring and detection engineering.
+
+**Next:** Day 47 — Sysmon Event ID 1: Advanced Process Creation Investigation.
