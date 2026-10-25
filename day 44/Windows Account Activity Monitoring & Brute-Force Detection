@@ -1,0 +1,236 @@
+# Day 44 — Windows Account Activity Monitoring & Brute-Force Detection
+
+## 🎯 Objective
+
+Learn how to monitor Windows account activity, investigate failed and successful logons, identify patterns that may indicate brute-force attempts, and create a basic SOC investigation report using PowerShell.
+
+## 📚 1. Concepts Learned
+
+A brute-force attack involves repeatedly attempting passwords to gain unauthorized access to an account. SOC analysts investigate authentication events to determine whether activity is suspicious.
+
+### Important Windows Event IDs
+
+| Event ID | Meaning | SOC use |
+|---|---|---|
+| 4624 | Successful logon | Investigate successful access |
+| 4625 | Failed logon | Investigate failed authentication |
+| 4648 | Logon using explicit credentials | Review supplied credentials |
+| 4740 | User account locked out | Investigate repeated failures |
+| 4776 | NTLM credential validation | Review NTLM authentication activity |
+
+**Note:** These events depend on the type of authentication, Windows configuration, audit policy, and available logs. Event ID 4740, for example, may not appear on a standalone computer for every local account lockout scenario.
+
+## 🛠️ 2. Practical Lab — Monitor Authentication Activity
+
+Open **PowerShell as Administrator** on your own Windows computer.
+
+### Step 1: Check recent Security events
+
+```powershell
+Get-WinEvent -LogName Security -MaxEvents 10 |
+Select-Object TimeCreated, Id, ProviderName |
+Format-Table -AutoSize
+```
+
+This confirms whether recent Security events are accessible.
+
+### Step 2: Investigate failed logons
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4625
+} -MaxEvents 30 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Review:
+- Timestamp
+- Account name
+- Logon type
+- Source workstation or network address, if recorded
+- Failure reason and status information
+
+Several failed logons may warrant investigation, but they do not prove a brute-force attack by themselves.
+
+### Step 3: Investigate successful logons
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4624
+} -MaxEvents 30 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Look for successful logons that occurred close to a series of failures. Compare account, timestamp, source information, and logon type where available.
+
+### Step 4: Check for account lockout events
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4740
+} -MaxEvents 20 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+If available, inspect the affected account and caller computer name. Repeated failures followed by a lockout can be an important signal for a SOC analyst.
+
+### Step 5: Review NTLM credential validation events
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4776
+} -MaxEvents 20 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+This event relates to NTLM credential validation. It is not a universal record of every Windows logon, so interpret it alongside other available events.
+
+## 🔍 3. Build a Simple Failed-Logon Summary
+
+The following script groups available Event ID 4625 records by minute. This is a basic starting point for spotting bursts of failures.
+
+```powershell
+$events = Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4625
+} -MaxEvents 200 -ErrorAction SilentlyContinue
+
+$events |
+Group-Object {
+    $_.TimeCreated.ToString("yyyy-MM-dd HH:mm")
+} |
+Sort-Object Count -Descending |
+Select-Object -First 10 @{
+    Name = 'Minute'
+    Expression = { $_.Name }
+}, Count |
+Format-Table -AutoSize
+```
+
+**Limitation:** This script counts all retrieved failures per minute. It does not separate accounts or source IP addresses. A production detection should correlate those fields from the event data and use a defined time window and threshold.
+
+## 🧪 4. Safely Generate a Test Event
+
+If your lab does not contain failed logon events, you can test with your own Windows account.
+
+1. Check the current audit policy:
+
+   ```powershell
+   auditpol /get /subcategory:"Logon"
+   ```
+
+2. If appropriate for your own lab, enable failure auditing in an elevated PowerShell window:
+
+   ```powershell
+   auditpol /set /subcategory:"Logon" /failure:enable
+   ```
+
+3. Lock your own computer.
+4. Enter an incorrect password **once** for your own account.
+5. Sign in normally.
+6. Query Event ID 4625 again.
+
+Do not repeatedly guess passwords or test against accounts you do not own. Audit policy changes may be controlled by an organization on managed devices; do not override organizational settings.
+
+If no event appears, record the result and check the applicable audit policy and log availability.
+
+## 🚨 5. How a SOC Analyst Investigates a Suspected Brute-Force Attack
+
+Follow this workflow:
+
+1. **Detect:** Identify a burst of failed logons.
+2. **Correlate:** Compare timestamps, account names, source addresses, and logon types.
+3. **Validate:** Check whether the source is a known device, user, application, or service.
+4. **Check success:** Determine whether a successful logon followed the failures.
+5. **Assess impact:** Review account lockouts, privilege use, and subsequent activity.
+6. **Escalate:** Follow the organization's incident-response process if the evidence warrants it.
+7. **Document:** Preserve relevant records and write a factual investigation report.
+
+Do not block an IP address or disable an account based only on a single event without following the appropriate authorization and response process.
+
+## 📝 6. Sample SOC Investigation Report
+
+Use this template with your actual lab findings.
+
+| Field | Details |
+|---|---|
+| Case ID | DAY44-001 |
+| Host | Anonymized lab computer |
+| Time range | Actual time range examined |
+| Event IDs | IDs actually observed |
+| Account | Account involved, anonymized |
+| Source | Source address or workstation, if available |
+| Observation | Actual authentication pattern |
+| Assessment | Expected / Needs investigation |
+| Evidence | Log entries or screenshots |
+| Next action | Further validation or escalation |
+
+### Example scenario — hypothetical
+
+A computer records 15 failed logons for one account within two minutes, followed by a successful logon.
+
+A SOC analyst would investigate whether the failures and success share the same source, whether the successful logon was expected, and whether subsequent activity indicates unauthorized access.
+
+This is an illustrative scenario, not a claim about your computer.
+
+## 💡 7. SOC Interview Questions
+
+**Q1. What is a brute-force attack?**
+
+A repeated attempt to guess credentials by trying many possible passwords or combinations.
+
+**Q2. What is the difference between Event IDs 4624 and 4625?**
+
+4624 records successful logons, while 4625 records failed logons.
+
+**Q3. What is Event ID 4740?**
+
+It records a user account lockout when the relevant event is generated and available.
+
+**Q4. Do repeated failed logons always indicate a brute-force attack?**
+
+No. They can also result from mistyped passwords, expired credentials, or services using outdated credentials. Analysts need contextual evidence.
+
+**Q5. How would you investigate a successful login after repeated failures?**
+
+Correlate account and source information, examine the timeline, verify the login with the account owner or authorized team, and review subsequent endpoint activity.
+
+## 📸 8. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-44/
+    ├── README.md
+    └── screenshots/
+        ├── failed-logons.png
+        ├── successful-logons.png
+        └── authentication-summary.png
+```
+
+Upload genuine evidence from your own lab. Hide usernames, machine names, public IP addresses, and other sensitive details before publishing.
+
+## ✅ 9. Completion Checklist
+
+- [ ] Reviewed Windows Security events.
+- [ ] Investigated Event ID 4625.
+- [ ] Compared failed and successful logons.
+- [ ] Checked lockout events if available.
+- [ ] Built a basic failed-logon summary.
+- [ ] Documented findings without inventing events.
+- [ ] Saved genuine screenshots for GitHub.
+
+## 🚀 Key Takeaway
+
+Today I practiced Windows account activity monitoring, investigated authentication events, summarized failed logons using PowerShell, and learned how SOC analysts correlate authentication patterns to investigate possible brute-force attacks.
+
+**Next:** Day 45 — Windows Account Lockout Investigation & Incident Response.
