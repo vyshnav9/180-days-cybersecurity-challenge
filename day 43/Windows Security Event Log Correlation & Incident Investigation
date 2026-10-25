@@ -1,0 +1,236 @@
+# Day 43 — Windows Security Event Log Correlation & Incident Investigation
+
+## 🎯 Objective
+
+Learn how to investigate Windows Security Event Logs, correlate authentication and process activity, identify potentially suspicious behavior, and prepare a basic SOC investigation report.
+
+## 📚 1. Concepts Learned
+
+Windows records security-related activities in the Event Viewer. SOC analysts examine these events to investigate suspicious logins, account activity, and process execution.
+
+Important Windows Event IDs:
+
+| Event ID | Meaning                                    | Investigation purpose                   |
+| -------- | ------------------------------------------ | --------------------------------------- |
+| 4624     | Successful logon                           | Identify successful login activity      |
+| 4625     | Failed logon                               | Investigate unsuccessful login attempts |
+| 4634     | Account logged off                         | Review session termination              |
+| 4648     | Logon using explicit credentials           | Investigate use of supplied credentials |
+| 4688     | Process created                            | Investigate process execution           |
+| 4672     | Special privileges assigned to a new logon | Review privileged logon activity        |
+
+**Important:** These events depend on the Windows version, audit policy, permissions, and whether the activity occurred. An event's presence alone does not prove malicious activity.
+
+## 🛠️ 2. Practical Lab — Investigate Windows Security Logs
+
+Open **PowerShell as Administrator** on your own Windows computer.
+
+### Step 1: Check recent Security events
+
+```powershell
+Get-WinEvent -LogName Security -MaxEvents 10 |
+Select-Object TimeCreated, Id, ProviderName |
+Format-Table -AutoSize
+```
+
+This checks whether Windows has recent Security events available to your account.
+
+### Step 2: Find successful logons
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4624
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Review the timestamp, account information, logon type, and other details included in each event.
+
+Common logon types include:
+
+- **2:** Interactive logon, such as a local console login.
+- **3:** Network logon.
+- **10:** Remote interactive logon, commonly associated with Remote Desktop.
+
+Interpret the logon type in context; background services and normal Windows operations can also generate logon events.
+
+### Step 3: Find failed logons
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4625
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Look for repeated failures, account names, source workstation information, and failure reasons.
+
+If PowerShell reports that no matching events were found, it may mean no such events were recorded in the available log. It does not automatically indicate a Windows problem.
+
+### Step 4: Investigate process creation
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4688
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Event ID 4688 records process creation when the corresponding auditing is configured.
+
+Investigate:
+
+- Process name
+- Creator or parent process, when recorded
+- Account associated with execution
+- Command line, if command-line auditing is enabled
+- Whether the activity matches expected user behavior
+
+### Step 5: Find privileged logon events
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4672
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+This event indicates that special privileges were assigned to a new logon. It can occur during legitimate administrative or system activity, so do not treat it as malicious by itself.
+
+### Step 6: Build a simple timeline
+
+The following script collects available events from selected IDs and sorts them by time.
+
+```powershell
+$eventIds = 4624, 4625, 4648, 4672, 4688
+
+$events = Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = $eventIds
+} -MaxEvents 100 -ErrorAction SilentlyContinue
+
+$events |
+Sort-Object TimeCreated |
+Select-Object TimeCreated, Id, ProviderName, Message |
+Format-List
+```
+
+**How to use the timeline:** Look for events close together in time. For example, several failed logons followed by a successful logon may warrant investigation, but the sequence alone does not establish that an account was compromised.
+
+## 🔎 3. Event Correlation Exercise
+
+Use your actual event records to answer these questions:
+
+1. Were any failed logons recorded?
+2. Were successful logons recorded around the same time?
+3. Do the records identify the same account or source?
+4. Was a process created shortly after the logon?
+5. Is there evidence of unusual privilege use?
+6. What additional evidence would help confirm or dismiss your concern?
+
+### Example investigation scenario
+
+A hypothetical endpoint records multiple failed logons followed by a successful logon and then a new process.
+
+A SOC analyst should:
+
+- Review the timestamps and account details.
+- Compare source information across the authentication events.
+- Investigate the process and its execution context.
+- Check other available endpoint and network logs.
+- Classify the activity based on evidence and escalate if warranted.
+
+This is a practice scenario, not a claim that these events occurred on your computer.
+
+## 🧪 4. Practical Task
+
+Complete the following on your Windows lab machine:
+
+- [ ] Review recent Security events.
+- [ ] Search for Event ID 4624.
+- [ ] Search for Event ID 4625.
+- [ ] Search for Event ID 4688.
+- [ ] Review Event ID 4672 if available.
+- [ ] Create a timeline from available records.
+- [ ] Record one observation and its supporting evidence.
+- [ ] Save a screenshot with sensitive information hidden.
+
+If an event is unavailable, record **“No matching event found”** and investigate whether the relevant auditing is enabled. Do not fabricate event records.
+
+## 📝 5. SOC Investigation Report Template
+
+| Field              | Details                             |
+| ------------------ | ----------------------------------- |
+| Case ID            | DAY43-001                           |
+| Host               | Your lab computer, anonymized       |
+| Time range         | Actual time range examined          |
+| Event IDs          | IDs actually observed               |
+| Account            | Anonymized account, if applicable   |
+| Observed activity  | Factual summary of events           |
+| Evidence           | Log records or screenshots          |
+| Assessment         | Expected / Needs investigation      |
+| Recommended action | Additional validation or escalation |
+
+Distinguish observed facts from assumptions. Avoid declaring an incident confirmed unless the evidence supports that conclusion.
+
+## 💡 6. SOC Interview Questions
+
+**Q1. What is Windows Event ID 4624?**
+
+It records a successful logon when the relevant event is generated and available in the Security log.
+
+**Q2. What is the difference between Event IDs 4624 and 4625?**
+
+4624 records successful logons; 4625 records failed logons.
+
+**Q3. What does Event ID 4688 represent?**
+
+It records process creation when process-creation auditing is enabled.
+
+**Q4. Why is event correlation important?**
+
+It connects related events across time and context, helping analysts distinguish normal behavior from activity that may require investigation.
+
+**Q5. Do multiple failed logons prove a brute-force attack?**
+
+No. They may indicate a brute-force attempt, but mistyped passwords, stale credentials, or misconfigured services can also produce failures. Review the source, frequency, accounts, and surrounding events.
+
+## 📸 7. GitHub Evidence
+
+Recommended repository structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-43/
+    ├── README.md
+    └── screenshots/
+        ├── security-events.png
+        ├── authentication-investigation.png
+        └── event-timeline.png
+```
+
+Upload only screenshots and findings from your actual lab. Hide usernames, machine names, IP addresses, and other sensitive details before publishing.
+
+## ✅ 8. Completion Checklist
+
+- [ ] Queried Windows Security events with PowerShell.
+- [ ] Investigated authentication event IDs.
+- [ ] Reviewed process-creation events.
+- [ ] Correlated available events into a timeline.
+- [ ] Documented evidence and limitations.
+- [ ] Prepared a basic SOC investigation report.
+- [ ] Uploaded genuine evidence to GitHub.
+
+## 🚀 Key Takeaway
+
+Today I practiced querying Windows Security Event Logs, investigating authentication and process activity, correlating events into a timeline, and documenting findings using a SOC-style report.
+
+**Next:** Day 44 — Windows Account Activity Monitoring & Brute-Force Detection.
