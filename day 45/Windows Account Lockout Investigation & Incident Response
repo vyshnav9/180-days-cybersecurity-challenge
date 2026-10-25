@@ -1,0 +1,228 @@
+# Day 45 — Windows Account Lockout Investigation & Incident Response
+
+## 🎯 Objective
+
+Learn how to investigate Windows account lockouts, correlate failed logons with authentication events, identify possible causes, and document findings in a SOC incident report.
+
+## 📚 1. Concepts Learned
+
+An account lockout occurs when an account reaches a configured threshold of unsuccessful authentication attempts. Lockout policies help protect accounts against repeated password guessing.
+
+Important Windows Security Event IDs:
+
+| Event ID | Meaning | Investigation purpose |
+|---|---|---|
+| 4624 | Successful logon | Identify successful authentication |
+| 4625 | Failed logon | Investigate unsuccessful authentication |
+| 4740 | User account locked out | Investigate account lockouts |
+| 4771 | Kerberos pre-authentication failed | Investigate certain Kerberos authentication failures |
+| 4776 | NTLM credential validation | Investigate NTLM authentication activity |
+
+**Important:** Event availability depends on the Windows environment, authentication method, audit policy, and where the event is recorded. Domain account events may be available on a domain controller rather than the user's computer.
+
+## 🛠️ 2. Practical Lab — Investigate Account Lockouts
+
+Open PowerShell as Administrator on your own Windows lab machine.
+
+### Step 1: Check recent Security events
+
+```powershell
+Get-WinEvent -LogName Security -MaxEvents 10 |
+Select-Object TimeCreated, Id, ProviderName |
+Format-Table -AutoSize
+```
+
+Confirm that you can access the Security log.
+
+### Step 2: Search for account lockouts
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4740
+} -MaxEvents 20 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Review the account name, timestamp, and caller computer name when available.
+
+If no events are returned, your machine may not have recorded a matching lockout event. Do not assume the system is faulty.
+
+### Step 3: Search for failed logons
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4625
+} -MaxEvents 30 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Investigate:
+- Which account experienced failures?
+- When did the failures occur?
+- Is source information available?
+- Are the failures concentrated within a short time window?
+- Is there a plausible explanation, such as an outdated saved password?
+
+### Step 4: Check successful logons
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    Id      = 4624
+} -MaxEvents 30 -ErrorAction SilentlyContinue |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Compare successful logons with failed attempts around the same period. Check account, source, logon type, and timing where available.
+
+### Step 5: Inspect the local account lockout policy
+
+Run:
+
+```powershell
+net accounts
+```
+
+Review the displayed lockout threshold, lockout duration, and observation window, where configured.
+
+For domain accounts, the effective policy may be managed by Group Policy or domain account policies. A local policy display does not necessarily show the effective domain policy.
+
+### Step 6: Check account status
+
+For the current user:
+
+```powershell
+whoami
+```
+
+To inspect a local account, replace `USERNAME` with the actual local account name:
+
+```powershell
+Get-LocalUser -Name "USERNAME" |
+Select-Object Name, Enabled, LockedOut, LastLogon
+```
+
+This command applies to supported Windows editions and local accounts. It does not directly inspect a domain account.
+
+## 🔎 3. Identify Possible Causes
+
+An account lockout can have several explanations:
+
+- Repeated incorrect password entry.
+- A saved password that is no longer valid.
+- A background application or scheduled task using outdated credentials.
+- A mapped network drive using an old password.
+- Repeated authentication attempts from another device.
+- A possible password-guessing attempt.
+
+A lockout alone does not establish malicious intent. Correlate the evidence before making a conclusion.
+
+## 🧪 4. Practical Investigation Exercise
+
+Use the available logs from your own computer.
+
+1. Search for Event ID 4740.
+2. Search for Event ID 4625.
+3. Review Event ID 4624 around the same time, if available.
+4. Inspect the account lockout policy.
+5. Record the account, timestamps, and source details available in the logs.
+6. Decide whether the activity appears expected or requires further investigation.
+7. Save a screenshot of the genuine results.
+
+**Safety:** Do not deliberately trigger repeated failed logons or attempt to lock out accounts. If you need to test an account lockout, use an isolated lab account and an authorized test procedure.
+
+## 🚨 5. SOC Incident Response Workflow
+
+`Detect → Validate → Investigate → Contain if Authorized → Recover → Document`
+
+- **Detect:** Identify a lockout or unusual burst of authentication failures.
+- **Validate:** Confirm the account, event source, and time range.
+- **Investigate:** Check saved credentials, related devices, authentication events, and successful logons.
+- **Contain:** Follow approved procedures if unauthorized access is suspected.
+- **Recover:** Restore normal access through the authorized account recovery process.
+- **Document:** Record evidence, actions taken, and the final assessment.
+
+Do not unlock accounts, reset passwords, or change security policies without appropriate authorization.
+
+## 📝 6. SOC Incident Report Template
+
+| Field | Details |
+|---|---|
+| Case ID | DAY45-001 |
+| Host | Anonymized lab computer |
+| Account | Anonymized account |
+| Event IDs | Events actually observed |
+| Time range | Actual investigation period |
+| Suspected cause | Evidence-based assessment |
+| Source | Caller computer or address, if available |
+| Impact | Confirmed impact or unknown |
+| Action taken | Actual actions, if any |
+| Final status | Expected / Needs investigation / Escalated |
+
+### Example scenario — hypothetical
+
+A user account becomes locked after repeated failed logons. The logs show failures associated with a workstation the user recognizes.
+
+A SOC analyst should verify whether the workstation or a background application is using outdated credentials, check for any successful logon that appears suspicious, and escalate if the evidence suggests unauthorized attempts.
+
+This scenario is illustrative, not a claim that a lockout occurred on your computer.
+
+## 💡 7. SOC Interview Questions
+
+**Q1. What is Windows Event ID 4740?**
+
+It records a user account lockout when the relevant event is generated and available.
+
+**Q2. What is the difference between Event IDs 4625 and 4740?**
+
+4625 records a failed logon; 4740 records an account lockout.
+
+**Q3. Can an account lockout occur without an active attacker?**
+
+Yes. Outdated saved credentials, background services, or repeated user mistakes can cause lockouts.
+
+**Q4. Where should you investigate a domain account lockout?**
+
+Check the relevant domain controller Security logs and related endpoints, according to your organization's logging configuration.
+
+**Q5. What should a SOC analyst do after detecting a suspicious lockout?**
+
+Validate the events, correlate authentication records, identify the likely source, assess risk, follow authorized response procedures, and document the investigation.
+
+## 📸 8. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-45/
+    ├── README.md
+    └── screenshots/
+        ├── account-lockout-events.png
+        ├── failed-logon-analysis.png
+        └── lockout-policy.png
+```
+
+Upload only genuine lab evidence. Hide usernames, computer names, IP addresses, and other sensitive details before publishing.
+
+## ✅ 9. Completion Checklist
+
+- [ ] Checked Security event availability.
+- [ ] Searched for Event ID 4740.
+- [ ] Investigated Event ID 4625.
+- [ ] Correlated successful logons where available.
+- [ ] Inspected the lockout policy.
+- [ ] Documented possible causes and evidence.
+- [ ] Prepared a SOC incident report.
+- [ ] Saved genuine screenshots for GitHub.
+
+## 🚀 Key Takeaway
+
+Today I practiced Windows account lockout investigation, reviewed authentication events, inspected lockout policy settings, and learned how SOC analysts distinguish legitimate lockouts from potentially suspicious authentication activity.
+
+**Next:** Day 46 — Windows Security Log Filtering, Event Correlation & Detection Rules.
