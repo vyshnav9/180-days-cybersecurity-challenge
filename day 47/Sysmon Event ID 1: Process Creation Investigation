@@ -1,0 +1,268 @@
+# Day 47 — Sysmon Event ID 1: Process Creation Investigation
+
+## 🎯 Objective
+
+Investigate Windows process-creation events using Sysmon Event ID 1 and identify unusual execution patterns by analyzing:
+
+- Process image and executable path
+- Command-line arguments
+- Parent and child process relationships
+- User account and process identifiers
+- Process hashes, when available
+- Event timestamps and surrounding activity
+
+## 📚 1. What Is Sysmon Event ID 1?
+
+Sysmon Event ID **1 — Process Create** records information about a newly created process.
+
+It can help SOC analysts investigate questions such as:
+
+- Which executable was launched?
+- Which process launched it?
+- Which user executed the process?
+- What command-line arguments were used?
+- Does the process path or parent–child relationship look unusual?
+
+Event ID 1 is useful for investigating suspicious script execution, unexpected applications, unusual parent processes, and other endpoint activity.
+
+**Important:** An unusual process is not automatically malicious. Always investigate its context before making a conclusion.
+
+## 🛠️ 2. Lab Prerequisites
+
+Before starting:
+
+1. Sysmon must be installed on your Windows machine.
+2. The Sysmon service must be running.
+3. The `Microsoft-Windows-Sysmon/Operational` event channel must exist.
+4. Process-creation logging must be enabled in the active Sysmon configuration.
+
+Check the service:
+
+```powershell
+Get-Service *Sysmon*
+```
+
+Check the event channel:
+
+```powershell
+Get-WinEvent -ListLog 'Microsoft-Windows-Sysmon/Operational'
+```
+
+If the channel is missing, troubleshoot the installation before continuing. Do not record the lab as successful until you can verify the event data.
+
+## 🔎 3. Search for Sysmon Event ID 1
+
+Open PowerShell as Administrator and run:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 10 |
+Select-Object TimeCreated, Id, ProviderName, Message |
+Format-List
+```
+
+This displays up to 10 recent process-creation events.
+
+Review the `Message` field for details such as the image path, command line, parent process and user.
+
+If no events are returned, generate a harmless test event and try again.
+
+## 🧪 4. Generate a Benign Test Event
+
+Start Notepad:
+
+```powershell
+Start-Process notepad.exe
+```
+
+Search for recent process-creation events again:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 10 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Look for the Notepad process in the results.
+
+If it does not appear, verify the Sysmon configuration and check whether process creation is being logged. Do not assume the event exists simply because Notepad launched successfully.
+
+## 🧰 5. Extract Process Details into Readable Fields
+
+Sysmon events contain structured XML data. The following PowerShell script extracts commonly useful fields from recent Event ID 1 records.
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 20 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated       = $event.TimeCreated
+        Image             = $data['Image']
+        CommandLine       = $data['CommandLine']
+        ParentImage       = $data['ParentImage']
+        ParentCommandLine = $data['ParentCommandLine']
+        User              = $data['User']
+        ProcessId         = $data['ProcessId']
+        ParentProcessId   = $data['ParentProcessId']
+        Hashes            = $data['Hashes']
+    }
+} | Format-List
+```
+
+Some fields may be blank or absent depending on the event version and configuration. Hash information is available only when the relevant Sysmon settings support it.
+
+For a simpler alternative, use the original event `Message` field.
+
+## 🧠 6. Understand the Important Fields
+
+| Field | What to investigate |
+|---|---|
+| `UtcTime` / event timestamp | When the process started |
+| `Image` | Full path of the executable |
+| `CommandLine` | Executable arguments and invocation details |
+| `ParentImage` | Executable that launched the process |
+| `ParentCommandLine` | How the parent process was started |
+| `User` | Account associated with process creation |
+| `ProcessId` | Identifier of the created process |
+| `ParentProcessId` | Identifier of the parent process |
+| `Hashes` | Available hashes for file identification and comparison |
+| `ProcessGuid` | Sysmon process identifier useful for event correlation |
+| `ParentProcessGuid` | Sysmon identifier for correlating the parent process |
+
+A process ID can be reused after a process exits. Where available, use Sysmon process GUIDs for more reliable correlation across events.
+
+## 🚩 7. SOC Investigation Checklist
+
+When reviewing an event, ask these questions:
+
+### A. Executable path
+
+- Is the executable in an expected location?
+- Does the filename or path imitate a legitimate application?
+- Is the executable running from a temporary or user-writable directory?
+
+### B. Command line
+
+- Are there unexpected arguments?
+- Is a script interpreter being used?
+- Does the command match the user's expected activity?
+
+### C. Parent–child relationship
+
+- Is the parent process expected to launch this child?
+- Does the relationship make sense for the application?
+- Is additional evidence needed to explain the process chain?
+
+### D. User and timing
+
+- Is the account expected to run this application?
+- Does the timestamp align with the user's activity?
+- Are there related authentication, file or network events?
+
+### E. Evidence and conclusion
+
+- Can the event be linked to other telemetry?
+- Is the activity confirmed benign, suspicious, or inconclusive?
+- What additional evidence would help confirm the assessment?
+
+Do not classify a process as malicious based on its filename, location, or command line alone.
+
+## 🔗 8. Correlate Process Events
+
+Use the event fields to connect related process activity:
+
+1. Identify the process under investigation.
+2. Record its `ProcessGuid`, `ParentProcessGuid`, timestamp and user.
+3. Search other Event ID 1 records for the parent process.
+4. Review nearby events for relevant network, file or registry activity, if those event types are enabled.
+5. Build a short process timeline.
+
+A parent–child relationship provides context, but it is not proof of malicious behavior.
+
+## 📋 9. Record Your Lab Findings
+
+Complete this table using your actual results.
+
+| Investigation item | Actual observation |
+|---|---|
+| Event channel available | Yes / No |
+| Event ID 1 found | Yes / No |
+| Test process | Actual process observed |
+| Executable path | Actual event value |
+| Parent process | Actual event value |
+| User | Actual event value |
+| Command line available | Yes / No |
+| Hash available | Yes / No |
+| Assessment | Benign / Suspicious / Inconclusive |
+| Reason | Evidence supporting the assessment |
+
+If you only observed Notepad, document it as a benign test. Do not invent suspicious findings.
+
+## 📸 10. GitHub Evidence
+
+Recommended structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-47/
+    ├── README.md
+    └── screenshots/
+        ├── event-id-1-search.png
+        ├── process-details.png
+        └── investigation-notes.png
+```
+
+Capture genuine screenshots of your commands and results. Redact usernames, machine names and other personal information where necessary.
+
+## 💼 11. SOC Interview Questions
+
+**Q1. What does Sysmon Event ID 1 record?**
+
+It records process creation and provides details such as the executable, command line, user, process identifiers and parent process.
+
+**Q2. Why is the parent process important?**
+
+It helps an analyst understand how a process was launched and whether the execution chain is expected.
+
+**Q3. What is the difference between a process ID and a process GUID?**
+
+A PID is an operating-system process identifier that may be reused. A Sysmon process GUID provides a more reliable identifier for correlating process events.
+
+**Q4. Does a suspicious command line prove malware execution?**
+
+No. It is an investigative clue that must be evaluated with other evidence.
+
+**Q5. What should you do if Event ID 1 is missing?**
+
+Verify that Sysmon is installed and running, the event channel exists, process-creation logging is enabled, and the query is targeting the correct channel.
+
+## ✅ 12. Completion Checklist
+
+- [ ] Verified Sysmon service and event channel.
+- [ ] Searched for Event ID 1.
+- [ ] Generated a benign test process.
+- [ ] Examined executable and command-line details.
+- [ ] Investigated parent–child relationships.
+- [ ] Recorded actual observations and limitations.
+- [ ] Saved genuine screenshots.
+- [ ] Updated this README with lab findings.
+
+## 🚀 Key Takeaway
+
+Today I investigated Sysmon Event ID 1 to understand Windows process creation, command-line activity, and parent–child relationships. These skills help SOC analysts investigate endpoint activity and build evidence-based detections.
+
+**Next:** Day 48 — Sysmon Event ID 3: Network Connection Investigation.
