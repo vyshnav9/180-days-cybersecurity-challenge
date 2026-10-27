@@ -1,0 +1,311 @@
+# Day 48 — Sysmon Event ID 3: Network Connection Investigation
+
+## 🎯 Objective
+
+Investigate Windows network connection events using Sysmon Event ID 3 and learn how to identify unusual outbound or inbound connections by examining:
+
+- Source and destination IP addresses
+- Source and destination ports
+- Protocol and connection direction
+- Process ID and Process GUID
+- Application image path
+- Connection timestamps
+- Related process-creation events
+
+## 📚 1. What Is Sysmon Event ID 3?
+
+**Sysmon Event ID 3 — Network connection** records TCP and UDP network connection activity associated with processes.
+
+It can help SOC analysts investigate:
+
+- Which process initiated a network connection?
+- Which remote IP address and port were contacted?
+- Was the connection inbound or outbound?
+- Is the destination expected for that application?
+- Does the connection correlate with a suspicious process?
+
+**Important:** Network connection logging is disabled by default in some Sysmon configurations. Installing Sysmon does not guarantee that Event ID 3 will be recorded. Also, a connection to an unfamiliar IP address is not automatically malicious.
+
+## 🛠️ 2. Lab Prerequisites
+
+Before starting, verify that Sysmon is installed and running.
+
+Open PowerShell as Administrator:
+
+```powershell
+Get-Service *Sysmon*
+```
+
+Check the event channel:
+
+```powershell
+Get-WinEvent -ListLog 'Microsoft-Windows-Sysmon/Operational'
+```
+
+Inspect the current Sysmon configuration:
+
+```powershell
+cd C:\Tools\Sysmon
+.\Sysmon64.exe -c
+```
+
+If your executable is named `Sysmon.exe`, use that filename instead.
+
+Look for the active configuration's network connection filtering. Event ID 3 must be enabled for the connections you want to record.
+
+## 🔎 3. Search for Sysmon Event ID 3
+
+Run:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 3
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Select-Object TimeCreated, Id, Message |
+```
+
+Review the output for:
+
+- `Image`
+- `ProcessId`
+- `ProcessGuid`
+- `Protocol`
+- `SourceIp`
+- `SourcePort`
+- `DestinationIp`
+- `DestinationPort`
+- `Initiated`
+
+Some fields may be absent depending on the event version and configuration.
+
+If no events appear, check the Sysmon configuration before concluding that no network activity occurred.
+
+## 🧪 4. Generate a Benign Network Test
+
+Use a normal web request to a trusted site, such as Microsoft's website.
+
+```powershell
+Invoke-WebRequest -Uri 'https://www.microsoft.com' -Method Head -TimeoutSec 15
+```
+
+This may create a network connection, but the request alone does not guarantee that Sysmon will log Event ID 3. The connection may be reused, and network logging must be enabled.
+
+Now search again:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 3
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+If the command fails because of connectivity, proxy, or TLS issues, document the actual error. Do not interpret a failed web request as a Sysmon detection.
+
+## 🧰 5. Extract Network Connection Details
+
+The following script parses recent Event ID 3 records into readable fields.
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 3
+} -MaxEvents 30 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated     = $event.TimeCreated
+        Image           = $data['Image']
+        ProcessId       = $data['ProcessId']
+        ProcessGuid     = $data['ProcessGuid']
+        Protocol        = $data['Protocol']
+        SourceIp        = $data['SourceIp']
+        SourcePort      = $data['SourcePort']
+        DestinationIp   = $data['DestinationIp']
+        DestinationPort = $data['DestinationPort']
+        Initiated       = $data['Initiated']
+    }
+} | Format-Table -AutoSize
+```
+
+If no events are available, PowerShell will return no event objects. Confirm the logging configuration before continuing.
+
+## 🧠 6. Understand the Important Fields
+
+| Field             | Meaning                                                |
+| ----------------- | ------------------------------------------------------ |
+| `Image`           | Executable associated with the connection              |
+| `ProcessId`       | Process identifier at the time of the event            |
+| `ProcessGuid`     | Sysmon identifier useful for process correlation       |
+| `Protocol`        | Network protocol, such as TCP or UDP                   |
+| `SourceIp`        | Local/source IP address recorded by the event          |
+| `SourcePort`      | Source port                                            |
+| `DestinationIp`   | Destination IP address                                 |
+| `DestinationPort` | Destination port                                       |
+| `Initiated`       | Indicates whether the process initiated the connection |
+| `UtcTime`         | Event timestamp in UTC                                 |
+
+A source port is often dynamically assigned. A destination port can provide context, but it does not prove which application-level service is running.
+
+## 🚩 7. SOC Investigation Workflow
+
+### A. Investigate the destination
+
+Ask:
+
+- Is the destination expected for this application?
+- Is it a private or public IP address?
+- Is the connection consistent with normal business activity?
+- Is there supporting evidence of suspicious activity?
+
+Do not rely on an IP address's reputation alone. Cloud services, shared hosting and content delivery networks can serve many legitimate customers.
+
+### B. Investigate the process
+
+Ask:
+
+- Is the executable path expected?
+- Does the process normally require network access?
+- Is the executable signed or otherwise verifiable?
+- Is the process associated with an unusual parent process?
+
+### C. Investigate the ports and protocol
+
+Ask:
+
+- Is the port expected for the observed application?
+- Is the protocol consistent with the application?
+- Is the destination port unusual for this endpoint's normal behavior?
+
+Port numbers are clues, not proof of malicious activity.
+
+### D. Investigate the timeline
+
+Compare the network event with:
+
+- Sysmon Event ID 1 — Process creation
+- Sysmon Event ID 22 — DNS queries, if enabled
+- Relevant Windows firewall logs
+- Other endpoint or SIEM telemetry
+
+Build a timeline before drawing a conclusion.
+
+## 🔗 8. Correlate Event ID 3 with Event ID 1
+
+Use `ProcessGuid` to connect a network event to the corresponding process-creation event.
+
+The following example searches for recent process-creation events and extracts their process identifiers and image paths.
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 100 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated = $event.TimeCreated
+        ProcessGuid = $data['ProcessGuid']
+        Image       = $data['Image']
+        CommandLine = $data['CommandLine']
+        User        = $data['User']
+    }
+} | Format-Table -AutoSize
+```
+
+Compare the `ProcessGuid` in the network event with the GUID in the process-creation event.
+
+This helps answer: **Which process was running when the connection occurred?**
+
+If the matching process-creation event is outside the retained event window, you may need to search further back in the logs. Do not rely on PID alone if a more reliable GUID is available.
+
+## 📋 9. Record Your Lab Findings
+
+Fill in the table using your actual observations.
+
+| Investigation item      | Actual result                      |   |
+| ----------------------- | ---------------------------------- | - |
+| Sysmon service status   | Actual service status              |   |
+| Event channel available | Yes / No                           |   |
+| Event ID 3 enabled      | Verified / Not verified            |   |
+| Event ID 3 found        | Yes / No                           |   |
+| Process image           | Actual event value                 |   |
+| Destination IP          | Actual event value                 |   |
+| destination port        | actual event value                 |   |
+| Protocol                | Actual event value                 |   |
+| Process correlated      | Yes / No                           |   |
+| Assessment              | Benign / Suspicious / Inconclusive |   |
+| Supporting evidence     | Actual findings                    |   |
+
+If you did not receive Event ID 3, document that limitation instead of inventing a connection or a detection.
+
+## 📸 10. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-48/
+    ├── README.md
+    └── screenshots/
+        ├── sysmon-event-id-3.png
+        ├── network-event-details.png
+        └── process-correlation.png
+```
+
+Save genuine screenshots of your PowerShell output and investigation notes. Redact usernames, machine names and any sensitive information before uploading.
+
+## 💼 11. SOC Interview Questions
+
+**Q1. What does Sysmon Event ID 3 record?**
+
+It records network connection activity associated with a process, when the active configuration enables the event.
+
+**Q2. Is Event ID 3 enabled in every Sysmon configuration?**
+
+No. Network connection logging depends on the active configuration.
+
+**Q3. How can an analyst identify the process associated with a connection?**
+
+Review the image and process fields in Event ID 3, then correlate the `ProcessGuid` with Event ID 1 where available.
+
+**Q4. Does an unfamiliar destination IP prove a compromise?**
+
+No. The analyst must validate the destination and consider process behavior, user activity and other telemetry.
+
+**Q5. What is the value of the `Initiated` field?**
+
+It helps distinguish connections initiated by the process from other recorded connection activity.
+
+## ✅ 12. Completion Checklist
+
+- [ ] Verified the Sysmon service and event channel.
+- [ ] Checked that Event ID 3 logging is enabled.
+- [ ] Searched for Event ID 3.
+- [ ] Performed a benign network test.
+- [ ] Extracted network connection fields.
+- [ ] Investigated destination IP and port context.
+- [ ] Correlated a connection with a process where possible.
+- [ ] Recorded actual findings and limitations.
+- [ ] Saved genuine screenshots for GitHub.
+
+## 🚀 Key Takeaway
+
+Today I investigated Sysmon Event ID 3 to understand Windows network connection telemetry and correlate network activity with processes. This is a core skill for SOC analysts investigating suspicious outbound connections and endpoint behavior.
+
+**Next:** Day 49 — Sysmon Event ID 11: File Creation Monitoring.
