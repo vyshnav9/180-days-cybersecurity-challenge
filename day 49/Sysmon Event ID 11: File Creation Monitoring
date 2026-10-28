@@ -1,0 +1,307 @@
+# Day 49 — Sysmon Event ID 11: File Creation Monitoring
+
+## 🎯 Objective
+
+Monitor Windows file creation activity using Sysmon Event ID 11 and investigate potentially suspicious file writes by examining:
+
+- File names and full paths
+- File creation timestamps
+- Processes responsible for creating files
+- Temporary and user-writable directories
+- Relationships between file creation and process activity
+- Supporting evidence from other Windows logs
+
+## 📚 1. What Is Sysmon Event ID 11?
+
+**Sysmon Event ID 11 — FileCreate** records when a file is created or overwritten, subject to the active Sysmon configuration.
+
+SOC analysts can use it to investigate:
+
+- Unexpected files appearing in temporary directories
+- Newly created scripts or executable files
+- Files written by unusual applications
+- Unexpected changes in application or user directories
+- File activity that may be related to a larger incident
+
+**Important:** Event ID 11 is not a complete file-change audit. It does not capture every modification to every file. Its coverage depends on the active configuration, and a file appearing in an unusual directory is not automatically malicious.
+
+## 🛠️ 2. Lab Prerequisites
+
+Verify that Sysmon is installed and running:
+
+```powershell
+Get-Service *Sysmon*
+```
+
+Check that the event channel exists:
+
+```powershell
+Get-WinEvent -ListLog 'Microsoft-Windows-Sysmon/Operational'
+```
+
+Inspect the active configuration:
+
+```powershell
+cd C:\Tools\Sysmon
+.\Sysmon64.exe -c
+```
+
+Run PowerShell as Administrator when required. If your executable is named `Sysmon.exe`, use that filename instead.
+
+If the event channel is missing, resolve the Day 46 installation issue first. Event ID 11 searches cannot work until the channel is available.
+
+## 🔎 3. Search for Sysmon Event ID 11
+
+Run:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 11
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Review the event message for:
+
+- `Image` — process image path
+- `ProcessId` — process identifier
+- `TargetFilename` — file path
+- `CreationUtcTime` — file creation time, when available
+- `User` — user associated with the event, when available
+
+Fields vary by event version. Use the actual message to confirm which fields are present.
+
+## 🧪 4. Generate a Benign File Creation Event
+
+Create a harmless text file in your temporary directory.
+
+```powershell
+$testFile = Join-Path $env:TEMP 'Sysmon-Day49-Test.txt'
+
+"Day 49 Sysmon file monitoring test" |
+Set-Content -Path $testFile
+
+Write-Output "Created test file: $testFile"
+```
+
+This writes a text file in your own temporary directory. It does not require downloading or executing any unknown files.
+
+Now search for Event ID 11 again:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 11
+} -MaxEvents 30 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Look for the file path ending in `Sysmon-Day49-Test.txt`.
+
+If it does not appear, check the active Sysmon configuration. The event may be excluded by a filter, or file-creation logging may not be enabled for the relevant path.
+
+## 🧰 5. Extract File Creation Details
+
+Use this PowerShell script to display recent Event ID 11 records in a structured format.
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 11
+} -MaxEvents 30 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated    = $event.TimeCreated
+        Image          = $data['Image']
+        ProcessId      = $data['ProcessId']
+        ProcessGuid    = $data['ProcessGuid']
+        TargetFilename = $data['TargetFilename']
+        CreationUtcTime = $data['CreationUtcTime']
+    }
+} | Format-List
+```
+
+If a field is blank, inspect the original event message. Not every event contains every field.
+
+## 🧠 6. Understand the Important Fields
+
+| Field | What it tells you |
+|---|---|
+| `Image` | Executable associated with the file activity |
+| `ProcessId` | Process identifier at the time of the event |
+| `ProcessGuid` | Sysmon process identifier useful for correlation |
+| `TargetFilename` | Full path of the affected file |
+| `CreationUtcTime` | File creation timestamp, when supplied |
+| `TimeCreated` | Timestamp recorded by Windows Event Log |
+
+The process that writes a file can help explain why it appeared. However, process attribution should be assessed with other evidence, including the process command line and related events.
+
+## 🚩 7. SOC Investigation Workflow
+
+### A. Examine the file path
+
+Ask:
+
+- Is the file in an expected directory?
+- Is the location writable by a normal user?
+- Is the file in a temporary, startup, application or download directory?
+- Does the path make sense for the application that created it?
+
+A temporary directory is not inherently suspicious. Many legitimate applications use temporary files.
+
+### B. Examine the filename
+
+Ask:
+
+- Does the filename resemble an expected application or document?
+- Does the file extension match its apparent purpose?
+- Is the name unexpected for the directory?
+
+Do not determine maliciousness from a filename or extension alone.
+
+### C. Examine the responsible process
+
+Ask:
+
+- Which executable created or overwrote the file?
+- Is that executable expected to write to the target directory?
+- Can its process-creation event be found?
+- Does its command line and parent process provide useful context?
+
+### D. Establish the timeline
+
+Compare the file event with:
+
+- Sysmon Event ID 1 — Process creation
+- Sysmon Event ID 3 — Network connection, if enabled
+- Sysmon Event IDs 12–14 — Registry activity, if enabled
+- Relevant Windows security or application logs
+
+Correlate events using timestamps and `ProcessGuid` where available.
+
+## 🔗 8. Correlate File Activity with Process Creation
+
+The following query extracts recent process-creation events so you can compare them with Event ID 11.
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 100 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated = $event.TimeCreated
+        ProcessGuid = $data['ProcessGuid']
+        Image       = $data['Image']
+        CommandLine = $data['CommandLine']
+        User        = $data['User']
+    }
+} | Format-Table -AutoSize
+```
+
+Compare the process GUID and timestamps with the file creation event.
+
+**Investigation question:** Does the process associated with the file activity match the process that was launched around the same time?
+
+If the relevant process event is outside the available log window, document that limitation rather than assuming the relationship.
+
+## 🧹 9. Optional: Remove the Test File
+
+After completing your investigation, remove only the specific test file created in this lab:
+
+```powershell
+Remove-Item -LiteralPath (Join-Path $env:TEMP 'Sysmon-Day49-Test.txt')
+```
+
+This cleanup command targets the lab file by its exact path. Do not change the path to a broader directory.
+
+## 📋 10. Record Your Lab Findings
+
+Fill in this table with your actual results.
+
+| Investigation item | Actual observation |
+|---|---|
+| Sysmon service status | Actual status |
+| Event channel available | Yes / No |
+| Event ID 11 enabled | Verified / Not verified |
+| Event ID 11 observed | Yes / No |
+| Test file path | Actual path |
+| Process image | Actual event value |
+| Process correlation | Yes / No |
+| Assessment | Benign / Suspicious / Inconclusive |
+| Evidence | Actual findings or screenshot |
+
+If Event ID 11 is not recorded, document the configuration or logging limitation. Do not invent a successful detection.
+
+## 📸 11. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-49/
+    ├── README.md
+    └── screenshots/
+        ├── event-id-11-search.png
+        ├── test-file-creation.png
+        └── file-event-details.png
+```
+
+Capture genuine screenshots of your commands and results. Redact usernames, machine names and other sensitive details before uploading.
+
+## 💼 12. SOC Interview Questions
+
+**Q1. What does Sysmon Event ID 11 record?**
+
+It records file creation activity, including file paths and associated process information, when the activity is covered by the active configuration.
+
+**Q2. Does Event ID 11 detect every file modification?**
+
+No. It is not a complete file-change audit. Its coverage depends on the event definition and configuration.
+
+**Q3. Why investigate files created in temporary directories?**
+
+These paths can be used by legitimate applications and by suspicious activity, so context helps analysts prioritize investigation.
+
+**Q4. How can a SOC analyst identify the process associated with file creation?**
+
+Inspect the event's process fields and correlate the process GUID with Event ID 1 where available.
+
+**Q5. Does an unusual filename prove a file is malicious?**
+
+No. Analysts should evaluate the path, responsible process, file properties and supporting telemetry.
+
+## ✅ 13. Completion Checklist
+
+- [ ] Verified Sysmon service and event channel.
+- [ ] Checked that Event ID 11 logging is enabled for the test path.
+- [ ] Searched for Event ID 11.
+- [ ] Created a harmless test text file.
+- [ ] Investigated the file path and process details.
+- [ ] Correlated with process-creation events where possible.
+- [ ] Recorded actual findings and limitations.
+- [ ] Saved genuine screenshots.
+- [ ] Updated this README with lab results.
+
+## 🚀 Key Takeaway
+
+Today I investigated Sysmon Event ID 11 to understand file creation telemetry and how SOC analysts connect file activity with the process responsible for it. This helps build a timeline of endpoint activity and supports evidence-based investigations.
+
+**Next:** Day 50 — Sysmon Event ID 22: DNS Query Investigation.
