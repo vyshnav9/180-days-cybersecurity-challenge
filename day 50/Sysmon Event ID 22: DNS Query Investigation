@@ -1,0 +1,301 @@
+# Day 50 — Sysmon Event ID 22: DNS Query Investigation
+
+## 🎯 Objective
+
+Investigate DNS query events using Sysmon Event ID 22 and learn how SOC analysts identify unusual domain lookups by examining:
+
+- Queried domain names
+- Processes generating DNS queries
+- DNS query timestamps and results
+- Repeated or unusual domain lookups
+- Process-to-domain relationships
+- Related network connection events
+
+## 📚 1. What Is Sysmon Event ID 22?
+
+**Sysmon Event ID 22 — DNS Query** records DNS queries made by a process, when supported by the system and enabled in the active Sysmon configuration.
+
+DNS translates domain names, such as `www.microsoft.com`, into information that allows applications to locate network services.
+
+SOC analysts use DNS telemetry to investigate:
+
+- Applications contacting unexpected domains
+- Repeated lookups for unusual domain names
+- Potential command-and-control indicators
+- Possible connections between suspicious processes and external domains
+- DNS activity associated with other endpoint events
+
+**Important:** A suspicious-looking domain or repeated DNS query is not proof of compromise. Investigate the process, domain context, timing and supporting evidence before drawing a conclusion.
+
+## 🛠️ 2. Lab Prerequisites
+
+Open PowerShell as Administrator and check the Sysmon service:
+
+```powershell
+Get-Service *Sysmon*
+```
+
+Check the event channel:
+
+```powershell
+Get-WinEvent -ListLog 'Microsoft-Windows-Sysmon/Operational'
+```
+
+Inspect the current configuration:
+
+```powershell
+cd C:\Tools\Sysmon
+.\Sysmon64.exe -c
+```
+
+If your executable is named `Sysmon.exe`, use that filename instead.
+
+Confirm that DNS query logging is enabled in the active configuration. If the event channel is missing, troubleshoot the Day 46 installation issue before continuing.
+
+## 🔎 3. Search for Sysmon Event ID 22
+
+Run:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 22
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Review the event messages for fields such as:
+
+- `Image`
+- `ProcessId`
+- `ProcessGuid`
+- `QueryName`
+- `QueryStatus`
+- `QueryResults`
+
+Field availability depends on the event version. Inspect the original message if a field is missing.
+
+## 🧪 4. Generate a Benign DNS Query
+
+Use a trusted domain for the test:
+
+```powershell
+Resolve-DnsName www.microsoft.com
+```
+
+This requests DNS resolution for the domain. The result may come from a DNS resolver or cache, and a successful command does not guarantee that a new Sysmon Event ID 22 will be generated.
+
+Search for Event ID 22 again:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 22
+} -MaxEvents 20 |
+Select-Object TimeCreated, Id, Message |
+Format-List
+```
+
+Look for the domain you queried and inspect the associated process.
+
+If no matching event appears, check the Sysmon configuration and whether DNS logging is enabled. Do not claim that detection succeeded unless the event is present.
+
+## 🧰 5. Extract DNS Query Details
+
+Use this script to extract common fields from recent Event ID 22 records:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 22
+} -MaxEvents 30 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated = $event.TimeCreated
+        Image       = $data['Image']
+        ProcessId   = $data['ProcessId']
+        ProcessGuid = $data['ProcessGuid']
+        QueryName   = $data['QueryName']
+        QueryStatus = $data['QueryStatus']
+        QueryResults = $data['QueryResults']
+    }
+} | Format-List
+```
+
+Some fields may be empty, depending on the event and configuration. Use the original event message to verify the data.
+
+## 🧠 6. Understand the Important Fields
+
+| Field | Meaning |
+|---|---|
+| `Image` | Executable associated with the DNS query |
+| `ProcessId` | Process identifier recorded for the event |
+| `ProcessGuid` | Sysmon process identifier useful for correlation |
+| `QueryName` | Domain name requested |
+| `QueryStatus` | Status of the DNS query |
+| `QueryResults` | DNS response information, when available |
+| `TimeCreated` | Timestamp recorded by Windows Event Log |
+
+A DNS query may return multiple addresses or no results. An unsuccessful query does not automatically indicate malicious activity.
+
+## 🚩 7. SOC Investigation Workflow
+
+### A. Examine the domain
+
+Ask:
+
+- Is the domain expected for the application?
+- Is the spelling unusual or potentially imitating a legitimate domain?
+- Is the domain newly encountered in your environment?
+- Is the domain associated with an approved business service?
+
+Use trusted threat-intelligence sources when further validation is necessary. Do not upload sensitive internal domains or data to public services without authorization.
+
+### B. Examine the process
+
+Ask:
+
+- Which executable generated the query?
+- Is the process expected to perform DNS lookups?
+- Does the process path appear legitimate?
+- Is there a corresponding process-creation event?
+
+### C. Examine query behavior
+
+Ask:
+
+- Does the same process repeatedly query the domain?
+- Are there many unusual subdomains?
+- Does the query occur around the same time as other suspicious activity?
+- Could normal software updates, browsers or monitoring agents explain the behavior?
+
+Repeated DNS queries can be completely legitimate. Frequency alone is not enough to classify an event as malicious.
+
+### D. Examine the timeline
+
+Compare the DNS event with:
+
+- Sysmon Event ID 1 — Process creation
+- Sysmon Event ID 3 — Network connections, if enabled
+- Windows DNS Client logs, when available
+- Firewall and SIEM records
+
+A DNS query and a network connection to the same destination can support an investigation, but they do not always correspond one-to-one.
+
+## 🔗 8. Correlate DNS Queries with Process Creation
+
+Use `ProcessGuid` to connect a DNS event to its corresponding process-creation event where available.
+
+The following script displays recent process-creation records:
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-Sysmon/Operational'
+    Id      = 1
+} -MaxEvents 100 | ForEach-Object {
+    $event = $_
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+
+    foreach ($item in $xml.Event.EventData.Data) {
+        $data[[string]$item.Name] = [string]$item.'#text'
+    }
+
+    [pscustomobject]@{
+        TimeCreated = $event.TimeCreated
+        ProcessGuid = $data['ProcessGuid']
+        Image       = $data['Image']
+        CommandLine = $data['CommandLine']
+        User        = $data['User']
+    }
+} | Format-Table -AutoSize
+```
+
+Compare the DNS event's `ProcessGuid` with the process-creation event's `ProcessGuid`.
+
+This helps establish which process was responsible for the DNS query. If the related process-creation event is no longer retained, document that limitation.
+
+## 📋 9. Record Your Lab Findings
+
+Fill in the table using your real results.
+
+| Investigation item | Actual observation |
+|---|---|
+| Sysmon service status | Actual status |
+| Event channel available | Yes / No |
+| Event ID 22 enabled | Verified / Not verified |
+| Event ID 22 observed | Yes / No |
+| Queried domain | Actual domain |
+| Associated process | Actual executable |
+| Query status | Actual event value |
+| Query results | Actual event value |
+| Process correlated | Yes / No |
+| Assessment | Benign / Suspicious / Inconclusive |
+| Supporting evidence | Actual findings |
+
+If Event ID 22 is missing, record the limitation rather than inventing a detection result.
+
+## 📸 10. GitHub Evidence
+
+Recommended folder structure:
+
+```text
+180-days-cybersecurity-challenge/
+└── Day-50/
+    ├── README.md
+    └── screenshots/
+        ├── event-id-22-search.png
+        ├── dns-query-details.png
+        └── process-correlation.png
+```
+
+Capture genuine screenshots of your commands and event results. Redact usernames, internal domains, machine names and sensitive network information where appropriate.
+
+## 💼 11. SOC Interview Questions
+
+**Q1. What does Sysmon Event ID 22 record?**
+
+It records DNS query activity associated with a process, when DNS query logging is supported and enabled.
+
+**Q2. Why is DNS telemetry useful in a SOC?**
+
+It helps analysts investigate domain lookups, identify unusual DNS behavior and correlate domain activity with endpoint processes.
+
+**Q3. Does a suspicious domain prove malware activity?**
+
+No. The domain must be evaluated with process information, reputation, timing and other supporting evidence.
+
+**Q4. How can a DNS query be associated with a process?**
+
+Review the `Image` and `ProcessGuid` fields, then correlate the process GUID with Event ID 1 where available.
+
+**Q5. Why might Event ID 22 be missing after a DNS lookup?**
+
+DNS logging may be disabled or filtered, the query may not generate a new event, or the channel may be unavailable. Verify the configuration and event data.
+
+## ✅ 12. Completion Checklist
+
+- [ ] Verified the Sysmon service and event channel.
+- [ ] Confirmed DNS query logging is enabled.
+- [ ] Searched for Event ID 22.
+- [ ] Performed a benign DNS query.
+- [ ] Extracted the domain and process details.
+- [ ] Reviewed query status and results.
+- [ ] Correlated DNS activity with process creation where possible.
+- [ ] Recorded actual observations and limitations.
+- [ ] Saved genuine screenshots.
+- [ ] Updated the README with lab findings.
+
+## 🚀 Key Takeaway
+
+Today I investigated Sysmon Event ID 22 to understand DNS query telemetry and connect domain lookups to Windows processes. This supports SOC investigations into suspicious domains, endpoint behavior and potential command-and-control activity.
+
+**Next:** Day 51 — Sysmon Registry Events: Event IDs 12–14.
